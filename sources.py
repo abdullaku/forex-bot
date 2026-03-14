@@ -9,8 +9,10 @@ logger = logging.getLogger(__name__)
 class NewsScraper:
     RSS_FEEDS = {
         "FXStreet": {"url": "https://www.fxstreet.com/rss", "category": "technical_analysis"},
-        "Reuters": {"url": "https://feeds.reuters.com/reuters/businessNews", "category": "economic_news"},
-        "MarketWatch": {"url": "https://feeds.marketwatch.com/marketwatch/topstories/", "category": "economic_news"},
+        "DailyFX": {"url": "https://www.dailyfx.com/feeds/all", "category": "forex_signal"},
+        "Investing": {"url": "https://www.investing.com/rss/news.rss", "category": "economic_news"},
+        "ForexLive": {"url": "https://www.forexlive.com/feed/news", "category": "economic_news"},
+        "CNBC": {"url": "https://www.cnbc.com/id/10000664/device/rss/rss.html", "category": "economic_news"},
     }
     FOREX_PAIRS = ["EUR/USD","GBP/USD","USD/JPY","XAU/USD","GOLD"]
     PRIORITY_KEYWORDS = ["CPI","NFP","GDP","Fed","ECB","inflation","interest rate"]
