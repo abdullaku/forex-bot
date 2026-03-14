@@ -5,11 +5,10 @@ from config import Config
 
 logger = logging.getLogger(__name__)
 
-PROMPT = """تۆ یارمەتیدەری پسپۆڕی بازاری فۆرێکسیت.
-هەواڵی خوارەوە بکە بە کوردیی سۆرانی و وەڵامت بدەرەوە تەنها بە JSON:
+PROMPT = """وەرگێڕانی ئەم هەواڵە بکە بۆ کوردیی سۆرانی و وەڵامت بدەرەوە تەنها بە JSON:
 {{
   "title_ku": "ناونیشانی کوردی",
-  "summary_ku": "پوختەی کوردی ٣-٥ هەستە",
+  "summary_ku": "پوختەی کوردی ٣-٤ هەستە",
   "signal": null
 }}
 سەرچاوە: {source}
@@ -17,12 +16,18 @@ PROMPT = """تۆ یارمەتیدەری پسپۆڕی بازاری فۆرێکسی
 پوختە: {summary}"""
 
 async def translate_to_kurdish(article):
-    prompt = PROMPT.format(source=article['source'], title=article['title'], summary=article['summary'][:600])
+    prompt = PROMPT.format(
+        source=article['source'],
+        title=article['title'],
+        summary=article['summary'][:600]
+    )
     try:
         async with aiohttp.ClientSession() as session:
             url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={Config.GEMINI_API_KEY}"
-            async with session.post(url, headers={"Content-Type": "application/json"},
-                json={"contents": [{"parts": [{"text": prompt}]}], "generationConfig": {"temperature": 0.3, "maxOutputTokens": 800}},
+            async with session.post(url,
+                headers={"Content-Type": "application/json"},
+                json={"contents": [{"parts": [{"text": prompt}]}],
+                      "generationConfig": {"temperature": 0.3, "maxOutputTokens": 800}},
                 timeout=aiohttp.ClientTimeout(total=30)) as resp:
                 if resp.status == 200:
                     data = await resp.json()
