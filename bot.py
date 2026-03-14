@@ -14,15 +14,15 @@ async def format_post(article):
     emoji = emojis.get(article.get("category",""),"📰")
     post = f"{emoji} {article['title_ku']}\n\n{article['summary_ku']}\n\n"
     if article.get("pairs"):
-        post += f"جووتەکان: {', '.join(article['pairs'])}\n"
+        post += f"💱 جووتەکان: {', '.join(article['pairs'])}\n"
     if article.get("signal"):
         s = article["signal"]
         d = "🟢" if s.get("direction")=="BUY" else "🔴"
         post += f"\n{d} سگنال: {s.get('direction','')}\n"
-        if s.get("entry"): post += f"چوونەژوورەوە: {s['entry']}\n"
-        if s.get("tp"): post += f"ئامانج: {s['tp']}\n"
-        if s.get("sl"): post += f"وەقفکردن: {s['sl']}\n"
-    post += f"\nسەرچاوە: {article['source']}"
+        if s.get("entry"): post += f"📍 چوونەژوورەوە: {s['entry']}\n"
+        if s.get("tp"): post += f"✅ ئامانج: {s['tp']}\n"
+        if s.get("sl"): post += f"❌ وەقفکردن: {s['sl']}\n"
+    post += f"\n🔗 سەرچاوە: <a href='{article['url']}'>{article['source']}</a>"
     post += f"\n🕐 {datetime.now().strftime('%H:%M | %d/%m/%Y')}"
     return post
 
@@ -39,7 +39,7 @@ async def run_bot():
             for article in new_articles:
                 article = await translate_to_kurdish(article)
                 text = await format_post(article)
-                await bot.send_message(chat_id=Config.CHANNEL_ID, text=text)
+                await bot.send_message(chat_id=Config.CHANNEL_ID, text=text, parse_mode="HTML")
                 posted_urls.add(article['url'])
                 await asyncio.sleep(Config.POST_DELAY_SECONDS)
             await asyncio.sleep(Config.CHECK_INTERVAL_SECONDS)
