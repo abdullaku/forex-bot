@@ -48,4 +48,4 @@ async def run_bot():
             await asyncio.sleep(60)
 
 if __name__ == "__main__":
-    asyncio.run(run_bot
+    asyncio.run(run_bot())
