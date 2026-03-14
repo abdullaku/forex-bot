@@ -5,41 +5,36 @@ from config import Config
 
 logger = logging.getLogger(__name__)
 
-PROMPT = """وەرگێڕانی ئەم هەواڵە بکە بۆ کوردیی سۆرانی و وەڵامت بدەرەوە تەنها بە JSON:
-{{
-  "title_ku": "ناونیشانی کوردی",
-  "summary_ku": "پوختەی کوردی ٣-٤ هەستە",
-  "signal": null
-}}
-سەرچاوە: {source}
-ناونیشان: {title}
-پوختە: {summary}"""
-
 async def translate_to_kurdish(article):
-    prompt = PROMPT.format(
-        source=article['source'],
-        title=article['title'],
-        summary=article['summary'][:600]
-    )
+    prompt = f"""ئەم هەواڵە بکە بە کوردیی سۆرانی. تەنها JSON بدەرەوە بەبێ هیچ دەقی تر:
+{{"title_ku": "ناونیشانی کوردی لێرە", "summary_ku": "پوختەی کوردی لێرە ٣ هەستە", "signal": null}}
+
+ناونیشان: {article['title']}
+پوختە: {article['summary'][:400]}"""
+
     try:
         async with aiohttp.ClientSession() as session:
             url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={Config.GEMINI_API_KEY}"
-            async with session.post(url,
-                headers={"Content-Type": "application/json"},
-                json={"contents": [{"parts": [{"text": prompt}]}],
-                      "generationConfig": {"temperature": 0.3, "maxOutputTokens": 800}},
-                timeout=aiohttp.ClientTimeout(total=30)) as resp:
+            payload = {
+                "contents": [{"parts": [{"text": prompt}]}],
+                "generationConfig": {
+                    "temperature": 0.1,
+                    "maxOutputTokens": 500,
+                    "responseMimeType": "application/json"
+                }
+            }
+            async with session.post(url, headers={"Content-Type": "application/json"},
+                json=payload, timeout=aiohttp.ClientTimeout(total=30)) as resp:
                 if resp.status == 200:
                     data = await resp.json()
                     raw = data["candidates"][0]["content"]["parts"][0]["text"].strip()
-                    if "```" in raw:
-                        raw = raw.split("```")[1]
-                        if raw.startswith("json"): raw = raw[4:]
-                    result = json.loads(raw.strip())
+                    result = json.loads(raw)
                     article["title_ku"] = result.get("title_ku", article["title"])
                     article["summary_ku"] = result.get("summary_ku", article["summary"])
                     article["signal"] = result.get("signal", None)
+                    logger.info(f"Translated: {article['title_ku'][:40]}")
                 else:
+                    logger.error(f"Gemini error: {resp.status}")
                     article["title_ku"] = article["title"]
                     article["summary_ku"] = article["summary"]
     except Exception as e:
