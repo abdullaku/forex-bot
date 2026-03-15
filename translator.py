@@ -14,7 +14,11 @@ async def translate_to_kurdish(article):
     title = article['title'][:100]
     summary = clean_html(article['summary'])
     
-    prompt = f"ئەم هەواڵە بکە بە کوردیی سۆرانی. تەنها JSON بدەرەوە:\n{{\"title_ku\": \"ناونیشانی کوردی\", \"summary_ku\": \"پوختەی کوردی ٢ هەستە\", \"signal\": null}}\n\nناونیشان: {title}\nپوختە: {summary}"
+    prompt = f"""Translate this news to Kurdish Sorani language. Return ONLY this JSON format, no other text:
+{{"title_ku": "translated title here", "summary_ku": "2 sentence summary in Kurdish Sorani here", "signal": null}}
+
+Title: {title}
+Summary: {summary}"""
 
     try:
         async with aiohttp.ClientSession() as session:
