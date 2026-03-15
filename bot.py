@@ -22,7 +22,7 @@ async def format_post(article):
         if s.get("entry"): post += f"📍 چوونەژوورەوە: {s['entry']}\n"
         if s.get("tp"): post += f"✅ ئامانج: {s['tp']}\n"
         if s.get("sl"): post += f"❌ وەقفکردن: {s['sl']}\n"
-    post += f"\n🔗 سەرچاوە: <a href='{article['url']}'>{article['source']}</a>"
+    post += f"\n🔗 سەرچاوە: {article['source']} - {article['url']}"
     post += f"\n🕐 {datetime.now().strftime('%H:%M | %d/%m/%Y')}"
     return post
 
@@ -39,7 +39,7 @@ async def run_bot():
             for article in new_articles:
                 article = await translate_to_kurdish(article)
                 text = await format_post(article)
-                await bot.send_message(chat_id=Config.CHANNEL_ID, text=text, parse_mode="HTML")
+                await bot.send_message(chat_id=Config.CHANNEL_ID, text=text)
                 posted_urls.add(article['url'])
                 await asyncio.sleep(Config.POST_DELAY_SECONDS)
             await asyncio.sleep(Config.CHECK_INTERVAL_SECONDS)
