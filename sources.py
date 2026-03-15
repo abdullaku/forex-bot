@@ -13,16 +13,21 @@ class NewsScraper:
         "Investing": {"url": "https://www.investing.com/rss/news.rss", "category": "economic_news"},
         "ForexLive": {"url": "https://www.forexlive.com/feed/news", "category": "economic_news"},
         "CNBC": {"url": "https://www.cnbc.com/id/10000664/device/rss/rss.html", "category": "economic_news"},
+        "Yahoo Finance": {"url": "https://finance.yahoo.com/news/rssindex", "category": "economic_news"},
+        "Benzinga": {"url": "https://www.benzinga.com/feed", "category": "economic_news"},
+        "Zerohedge": {"url": "https://feeds.feedburner.com/zerohedge/feed", "category": "economic_news"},
+        "Seeking Alpha": {"url": "https://seekingalpha.com/feed.xml", "category": "economic_news"},
+        "Bloomberg Markets": {"url": "https://feeds.bloomberg.com/markets/news.rss", "category": "economic_news"},
     }
-    FOREX_PAIRS = ["EUR/USD","GBP/USD","USD/JPY","XAU/USD","GOLD"]
-    PRIORITY_KEYWORDS = ["CPI","NFP","GDP","Fed","ECB","inflation","interest rate"]
+    FOREX_PAIRS = ["EUR/USD","GBP/USD","USD/JPY","XAU/USD","GOLD","WTI","OIL"]
+    PRIORITY_KEYWORDS = ["CPI","NFP","GDP","Fed","ECB","inflation","interest rate","FOMC","recession","tariff"]
 
     def detect_pairs(self, text):
         return [p for p in self.FOREX_PAIRS if p.upper() in text.upper()]
 
     def is_forex_relevant(self, title, summary):
         text = (title + " " + summary).lower()
-        keywords = ["forex","currency","dollar","euro","pound","yen","gold","oil","inflation","interest rate","fed","ecb","cpi","nfp","gdp","market","bullish","bearish"]
+        keywords = ["forex","currency","dollar","euro","pound","yen","gold","oil","inflation","interest rate","fed","ecb","cpi","nfp","gdp","market","bullish","bearish","stock","trade","economy","bank","rate"]
         return any(k in text for k in keywords)
 
     async def fetch_rss(self, source_name, feed_info):
