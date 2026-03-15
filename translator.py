@@ -18,16 +18,22 @@ async def translate_to_kurdish(article):
 
     try:
         async with aiohttp.ClientSession() as session:
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={Config.GEMINI_API_KEY}"
-            payload = {
-                "contents": [{"parts": [{"text": prompt}]}],
-                "generationConfig": {"temperature": 0.1, "maxOutputTokens": 300}
-            }
-            async with session.post(url, headers={"Content-Type": "application/json"},
-                json=payload, timeout=aiohttp.ClientTimeout(total=30)) as resp:
+            async with session.post(
+                "https://openrouter.ai/api/v1/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {Config.OPENROUTER_API_KEY}",
+                    "Content-Type": "application/json"
+                },
+                json={
+                    "model": "mistralai/mistral-7b-instruct:free",
+                    "messages": [{"role": "user", "content": prompt}],
+                    "max_tokens": 300
+                },
+                timeout=aiohttp.ClientTimeout(total=30)
+            ) as resp:
                 if resp.status == 200:
                     data = await resp.json()
-                    raw = data["candidates"][0]["content"]["parts"][0]["text"].strip()
+                    raw = data["choices"][0]["message"]["content"].strip()
                     if "```" in raw:
                         raw = raw.split("```")[1]
                         if raw.startswith("json"): raw = raw[4:]
@@ -37,7 +43,7 @@ async def translate_to_kurdish(article):
                     article["signal"] = result.get("signal", None)
                     logger.info(f"✅ Translated: {article['title_ku'][:40]}")
                 else:
-                    logger.error(f"Gemini error: {resp.status}")
+                    logger.error(f"OpenRouter error: {resp.status}")
                     article["title_ku"] = title
                     article["summary_ku"] = summary
     except Exception as e:
