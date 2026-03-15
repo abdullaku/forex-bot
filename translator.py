@@ -10,15 +10,33 @@ def clean_html(text):
     text = re.sub(r'<[^>]+>', '', text)
     return text[:300].strip()
 
+def extract_json(text):
+    try:
+        # ئەگەر ڕاستەوخۆ JSON بوو
+        return json.loads(text)
+    except:
+        pass
+    try:
+        # ئەگەر لە ناو ``` دابوو
+        match = re.search(r'\{.*?\}', text, re.DOTALL)
+        if match:
+            return json.loads(match.group())
+    except:
+        pass
+    return None
+
 async def translate_to_kurdish(article):
     title = article['title'][:100]
     summary = clean_html(article['summary'])
     
-    prompt = f"""Translate this news to Kurdish Sorani language. Return ONLY this JSON format, no other text:
-{{"title_ku": "translated title here", "summary_ku": "2 sentence summary in Kurdish Sorani here", "signal": null}}
+    prompt = f"""You are a Kurdish Sorani translator. Translate the news below to Kurdish Sorani.
+Return ONLY a JSON object like this example:
+{{"title_ku": "ناونیشانی کوردی", "summary_ku": "پوختەی کوردی لێرەدا", "signal": null}}
 
-Title: {title}
-Summary: {summary}"""
+News Title: {title}
+News Summary: {summary}
+
+JSON:"""
 
     try:
         async with aiohttp.ClientSession() as session:
@@ -31,7 +49,7 @@ Summary: {summary}"""
                 json={
                     "model": "openai/gpt-oss-120b",
                     "messages": [{"role": "user", "content": prompt}],
-                    "max_tokens": 300,
+                    "max_tokens": 400,
                     "temperature": 0.1
                 },
                 timeout=aiohttp.ClientTimeout(total=30)
@@ -39,14 +57,17 @@ Summary: {summary}"""
                 if resp.status == 200:
                     data = await resp.json()
                     raw = data["choices"][0]["message"]["content"].strip()
-                    if "```" in raw:
-                        raw = raw.split("```")[1]
-                        if raw.startswith("json"): raw = raw[4:]
-                    result = json.loads(raw.strip())
-                    article["title_ku"] = result.get("title_ku", title)
-                    article["summary_ku"] = result.get("summary_ku", summary)
-                    article["signal"] = result.get("signal", None)
-                    logger.info(f"✅ Translated: {article['title_ku'][:40]}")
+                    logger.info(f"Raw response: {raw[:100]}")
+                    result = extract_json(raw)
+                    if result:
+                        article["title_ku"] = result.get("title_ku", title)
+                        article["summary_ku"] = result.get("summary_ku", summary)
+                        article["signal"] = result.get("signal", None)
+                        logger.info(f"✅ Translated: {article['title_ku'][:40]}")
+                    else:
+                        logger.error(f"JSON parse failed: {raw[:100]}")
+                        article["title_ku"] = title
+                        article["summary_ku"] = summary
                 else:
                     logger.error(f"Groq error: {resp.status}")
                     article["title_ku"] = title
