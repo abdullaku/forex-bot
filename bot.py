@@ -4,7 +4,6 @@ from telegram import Bot
 from sources import NewsScraper
 from translator import translate_to_kurdish
 from config import Config
-from database import setup_db, is_posted, mark_posted
 from datetime import datetime
 
 logging.basicConfig(level=logging.INFO)
@@ -29,13 +28,17 @@ def is_kurdish(text):
     count = sum(1 for c in text if c in kurdish_chars)
     return count > len(text) * 0.2
 
+async def prefetch_urls(scraper):
+    logger.info("⏳ پیشەوەنین هەواڵە کۆنەکان...")
+    articles = await scraper.fetch_all()
+    urls = {a['url'].split('?')[0] for a in articles}
+    logger.info(f"✅ {len(urls)} هەواڵی کۆن تۆمار کرا")
+    return urls
+
 async def run_bot():
     bot = Bot(token=Config.BOT_TOKEN)
     scraper = NewsScraper()
-    
-    # دەتابەیس ئامادە بکە
-    await setup_db()
-    
+    posted_urls = await prefetch_urls(scraper)
     logger.info("🤖 Forex Bot started!")
     await bot.send_message(
         chat_id=Config.CHANNEL_ID,
@@ -44,15 +47,20 @@ async def run_bot():
     while True:
         try:
             articles = await scraper.fetch_all()
+            seen_urls = set()
+            seen_titles = set()
             new_articles = []
             for a in articles:
                 clean = a['url'].split('?')[0]
-                if not await is_posted(clean):
+                title_short = a['title'].strip().lower()[:50]
+                if clean not in posted_urls and clean not in seen_urls and title_short not in seen_titles:
+                    seen_urls.add(clean)
+                    seen_titles.add(title_short)
                     a['url'] = clean
                     new_articles.append(a)
             logger.info(f"هەواڵی نوێ: {len(new_articles)}")
             for article in new_articles:
-                await mark_posted(article['url'])
+                posted_urls.add(article['url'])
                 article = await translate_to_kurdish(article)
                 await asyncio.sleep(Config.TRANSLATE_DELAY_SECONDS)
                 if article.get('title_ku') and is_kurdish(article['title_ku']):
