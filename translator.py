@@ -19,13 +19,13 @@ async def translate_to_kurdish(article):
     try:
         async with aiohttp.ClientSession() as session:
             async with session.post(
-                "https://api.deepseek.com/chat/completions",
+                "https://api.groq.com/openai/v1/chat/completions",
                 headers={
-                    "Authorization": f"Bearer {Config.DEEPSEEK_API_KEY}",
+                    "Authorization": f"Bearer {Config.GROQ_API_KEY}",
                     "Content-Type": "application/json"
                 },
                 json={
-                    "model": "deepseek-chat",
+                    "model": "llama-3.3-70b-versatile",
                     "messages": [{"role": "user", "content": prompt}],
                     "max_tokens": 300,
                     "temperature": 0.1
@@ -44,7 +44,7 @@ async def translate_to_kurdish(article):
                     article["signal"] = result.get("signal", None)
                     logger.info(f"✅ Translated: {article['title_ku'][:40]}")
                 else:
-                    logger.error(f"DeepSeek error: {resp.status}")
+                    logger.error(f"Groq error: {resp.status}")
                     article["title_ku"] = title
                     article["summary_ku"] = summary
     except Exception as e:
