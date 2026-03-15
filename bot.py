@@ -37,7 +37,6 @@ async def run_bot():
     bot = Bot(token=Config.BOT_TOKEN)
     scraper = NewsScraper()
     posted_urls = await prefetch_urls(scraper)
-    posted_titles = set()
     logger.info("🤖 Forex Bot started!")
     await bot.send_message(
         chat_id=Config.CHANNEL_ID,
@@ -46,20 +45,22 @@ async def run_bot():
     while True:
         try:
             articles = await scraper.fetch_all()
+            # duplicate بسڕەوە
+            seen = set()
             new_articles = []
             for a in articles:
                 clean = a['url'].split('?')[0]
-                if clean not in posted_urls and a['title'] not in posted_titles:
+                if clean not in posted_urls and clean not in seen:
+                    seen.add(clean)
+                    a['url'] = clean
                     new_articles.append(a)
             logger.info(f"هەواڵی نوێ: {len(new_articles)}")
             for article in new_articles:
-                clean_url = article['url'].split('?')[0]
-                posted_urls.add(clean_url)
-                posted_titles.add(article['title'])
+                # پێشتر تۆمار بکە تا دووبارە نەینێرێت
+                posted_urls.add(article['url'])
                 article = await translate_to_kurdish(article)
                 await asyncio.sleep(Config.TRANSLATE_DELAY_SECONDS)
                 if article.get('title_ku') and is_kurdish(article['title_ku']):
-                    article['url'] = clean_url
                     text = await format_post(article)
                     await bot.send_message(chat_id=Config.CHANNEL_ID, text=text)
                     logger.info(f"✅ Posted: {article['title_ku'][:40]}")
