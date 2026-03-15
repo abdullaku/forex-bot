@@ -14,20 +14,21 @@ async def translate_to_kurdish(article):
     title = article['title'][:100]
     summary = clean_html(article['summary'])
     
-    prompt = f"وەرگێڕانی ئەم هەواڵە بکە بۆ کوردیی سۆرانی. تەنها JSON بدەرەوە:\n{{\"title_ku\": \"ناونیشانی کوردی\", \"summary_ku\": \"پوختەی کوردی ٢ هەستە\", \"signal\": null}}\n\nناونیشان: {title}\nپوختە: {summary}"
+    prompt = f"ئەم هەواڵە بکە بە کوردیی سۆرانی. تەنها JSON بدەرەوە:\n{{\"title_ku\": \"ناونیشانی کوردی\", \"summary_ku\": \"پوختەی کوردی ٢ هەستە\", \"signal\": null}}\n\nناونیشان: {title}\nپوختە: {summary}"
 
     try:
         async with aiohttp.ClientSession() as session:
             async with session.post(
-                "https://openrouter.ai/api/v1/chat/completions",
+                "https://api.deepseek.com/chat/completions",
                 headers={
-                    "Authorization": f"Bearer {Config.OPENROUTER_API_KEY}",
+                    "Authorization": f"Bearer {Config.DEEPSEEK_API_KEY}",
                     "Content-Type": "application/json"
                 },
                 json={
-                    "model": "mistralai/mistral-7b-instruct:free",
+                    "model": "deepseek-chat",
                     "messages": [{"role": "user", "content": prompt}],
-                    "max_tokens": 300
+                    "max_tokens": 300,
+                    "temperature": 0.1
                 },
                 timeout=aiohttp.ClientTimeout(total=30)
             ) as resp:
@@ -43,7 +44,7 @@ async def translate_to_kurdish(article):
                     article["signal"] = result.get("signal", None)
                     logger.info(f"✅ Translated: {article['title_ku'][:40]}")
                 else:
-                    logger.error(f"OpenRouter error: {resp.status}")
+                    logger.error(f"DeepSeek error: {resp.status}")
                     article["title_ku"] = title
                     article["summary_ku"] = summary
     except Exception as e:
