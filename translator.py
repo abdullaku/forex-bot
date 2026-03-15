@@ -29,7 +29,7 @@ Summary: {summary}"""
                     "Content-Type": "application/json"
                 },
                 json={
-                    "model": "llama3-70b-8192",
+                    "model": "openai/gpt-oss-120b",
                     "messages": [{"role": "user", "content": prompt}],
                     "max_tokens": 300,
                     "temperature": 0.1
