@@ -27,7 +27,6 @@ async def format_post(article):
     return post
 
 async def prefetch_urls(scraper):
-    """کۆتا هەواڵەکان بیر بکەرەوە بەبێ ئەوەی بینێرێت"""
     logger.info("⏳ پیشەوەنین هەواڵە کۆنەکان...")
     articles = await scraper.fetch_all()
     urls = {a['url'] for a in articles}
@@ -37,25 +36,24 @@ async def prefetch_urls(scraper):
 async def run_bot():
     bot = Bot(token=Config.BOT_TOKEN)
     scraper = NewsScraper()
-    
-    # هەواڵە کۆنەکان بیر بکەرەوە بەبێ ناردن
     posted_urls = await prefetch_urls(scraper)
-    
     logger.info("🤖 Forex Bot started!")
     await bot.send_message(chat_id=Config.CHANNEL_ID, text="🤖 بۆتی هەواڵی فۆرێکس چالاک بوو!\n\nهەموو کاتێک هەواڵ و ئەنالیزی نوێی فۆرێکس بۆتان دەنێرم 📊")
-    
     while True:
         try:
             articles = await scraper.fetch_all()
             new_articles = [a for a in articles if a['url'] not in posted_urls]
             logger.info(f"هەواڵی نوێ: {len(new_articles)}")
             for article in new_articles:
+                # زیاد بکە پێشتر تا دووبارە نەینێرێت
+                posted_urls.add(article['url'])
                 article = await translate_to_kurdish(article)
                 await asyncio.sleep(Config.TRANSLATE_DELAY_SECONDS)
-                text = await format_post(article)
-                await bot.send_message(chat_id=Config.CHANNEL_ID, text=text)
-                posted_urls.add(article['url'])
-                await asyncio.sleep(Config.POST_DELAY_SECONDS)
+                # تەنها ئەگەر کوردی بوو بینێرێت
+                if article.get('title_ku') and article['title_ku'] != article['title']:
+                    text = await format_post(article)
+                    await bot.send_message(chat_id=Config.CHANNEL_ID, text=text)
+                    await asyncio.sleep(Config.POST_DELAY_SECONDS)
             await asyncio.sleep(Config.CHECK_INTERVAL_SECONDS)
         except Exception as e:
             logger.error(f"Error: {e}")
