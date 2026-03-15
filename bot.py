@@ -38,6 +38,7 @@ async def run_bot():
             new_articles = [a for a in articles if a['url'] not in posted_urls]
             for article in new_articles:
                 article = await translate_to_kurdish(article)
+                await asyncio.sleep(Config.TRANSLATE_DELAY_SECONDS)
                 text = await format_post(article)
                 await bot.send_message(chat_id=Config.CHANNEL_ID, text=text)
                 posted_urls.add(article['url'])
