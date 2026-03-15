@@ -12,12 +12,10 @@ def clean_html(text):
 
 def extract_json(text):
     try:
-        # ئەگەر ڕاستەوخۆ JSON بوو
         return json.loads(text)
     except:
         pass
     try:
-        # ئەگەر لە ناو ``` دابوو
         match = re.search(r'\{.*?\}', text, re.DOTALL)
         if match:
             return json.loads(match.group())
@@ -47,7 +45,7 @@ JSON:"""
                     "Content-Type": "application/json"
                 },
                 json={
-                    "model": "openai/gpt-oss-120b",
+                    "model": "llama-3.3-70b-versatile",
                     "messages": [{"role": "user", "content": prompt}],
                     "max_tokens": 400,
                     "temperature": 0.1
