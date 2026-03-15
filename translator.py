@@ -29,7 +29,7 @@ Summary: {summary}"""
                     "Content-Type": "application/json"
                 },
                 json={
-                    "model": "meta-llama/llama-4-maverick-17b-128e-instruct",
+                    "model": "llama3-70b-8192",
                     "messages": [{"role": "user", "content": prompt}],
                     "max_tokens": 300,
                     "temperature": 0.1
