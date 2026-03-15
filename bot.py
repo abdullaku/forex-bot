@@ -11,13 +11,15 @@ logger = logging.getLogger(__name__)
 
 async def format_post(article):
     emojis = {"economic_news":"📊","technical_analysis":"📈","forex_signal":"🎯","live_rates":"💹"}
+    category_names = {"economic_news":"هەواڵی ئابووری","technical_analysis":"ئەنالیزی تەکنیکی","forex_signal":"سگنالی فۆرێکس","live_rates":"نرخی زیندوو"}
     emoji = emojis.get(article.get("category",""),"📰")
+    category_name = category_names.get(article.get("category",""),"هەواڵ")
     post = f"{emoji} {article['title_ku']}\n\n"
     post += f"{article['summary_ku']}\n\n"
     if article.get("pairs"):
         post += f"💱 {', '.join(article['pairs'])}\n\n"
-    post += f"📌 {article['source']}\n"
-    post += f"🔗 {article['url']}\n"
+    post += f"📌 {article['source']} | {category_name}\n"
+    post += f"🔗 <a href='{article['url']}'>بینە هەواڵەکە</a>\n"
     post += f"🕐 {datetime.now().strftime('%H:%M | %d/%m/%Y')}"
     return post
 
@@ -45,7 +47,6 @@ async def run_bot():
     while True:
         try:
             articles = await scraper.fetch_all()
-            # duplicate بسڕەوە
             seen = set()
             new_articles = []
             for a in articles:
@@ -56,13 +57,12 @@ async def run_bot():
                     new_articles.append(a)
             logger.info(f"هەواڵی نوێ: {len(new_articles)}")
             for article in new_articles:
-                # پێشتر تۆمار بکە تا دووبارە نەینێرێت
                 posted_urls.add(article['url'])
                 article = await translate_to_kurdish(article)
                 await asyncio.sleep(Config.TRANSLATE_DELAY_SECONDS)
                 if article.get('title_ku') and is_kurdish(article['title_ku']):
                     text = await format_post(article)
-                    await bot.send_message(chat_id=Config.CHANNEL_ID, text=text)
+                    await bot.send_message(chat_id=Config.CHANNEL_ID, text=text, parse_mode="HTML")
                     logger.info(f"✅ Posted: {article['title_ku'][:40]}")
                     await asyncio.sleep(Config.POST_DELAY_SECONDS)
                 else:
