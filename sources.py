@@ -41,7 +41,7 @@ class NewsScraper:
                         root = ET.fromstring(text)
                         ns = {'atom': 'http://www.w3.org/2005/Atom'}
                         items = root.findall('.//item') or root.findall('.//atom:entry', ns)
-                        for item in items[:8]:
+                        for item in items[:5]:
                             title = (item.findtext('title') or item.findtext('atom:title', namespaces=ns) or "").strip()
                             summary = (item.findtext('description') or item.findtext('atom:summary', namespaces=ns) or "").strip()
                             url = (item.findtext('link') or item.findtext('atom:link', namespaces=ns) or "").strip()
@@ -64,8 +64,14 @@ class NewsScraper:
         tasks = [self.fetch_rss(name, info) for name, info in self.RSS_FEEDS.items()]
         results = await asyncio.gather(*tasks, return_exceptions=True)
         all_articles = []
+        seen_urls = set()
         for result in results:
             if isinstance(result, list):
-                all_articles.extend(result)
+                for article in result:
+                    clean = article['url'].split('?')[0]
+                    if clean not in seen_urls:
+                        seen_urls.add(clean)
+                        article['url'] = clean
+                        all_articles.append(article)
         logger.info(f"Fetched {len(all_articles)} articles")
         return all_articles
