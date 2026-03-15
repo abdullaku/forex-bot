@@ -26,16 +26,29 @@ async def format_post(article):
     post += f"\n🕐 {datetime.now().strftime('%H:%M | %d/%m/%Y')}"
     return post
 
+async def prefetch_urls(scraper):
+    """کۆتا هەواڵەکان بیر بکەرەوە بەبێ ئەوەی بینێرێت"""
+    logger.info("⏳ پیشەوەنین هەواڵە کۆنەکان...")
+    articles = await scraper.fetch_all()
+    urls = {a['url'] for a in articles}
+    logger.info(f"✅ {len(urls)} هەواڵی کۆن تۆمار کرا")
+    return urls
+
 async def run_bot():
     bot = Bot(token=Config.BOT_TOKEN)
     scraper = NewsScraper()
-    posted_urls = set()
+    
+    # هەواڵە کۆنەکان بیر بکەرەوە بەبێ ناردن
+    posted_urls = await prefetch_urls(scraper)
+    
     logger.info("🤖 Forex Bot started!")
     await bot.send_message(chat_id=Config.CHANNEL_ID, text="🤖 بۆتی هەواڵی فۆرێکس چالاک بوو!\n\nهەموو کاتێک هەواڵ و ئەنالیزی نوێی فۆرێکس بۆتان دەنێرم 📊")
+    
     while True:
         try:
             articles = await scraper.fetch_all()
             new_articles = [a for a in articles if a['url'] not in posted_urls]
+            logger.info(f"هەواڵی نوێ: {len(new_articles)}")
             for article in new_articles:
                 article = await translate_to_kurdish(article)
                 await asyncio.sleep(Config.TRANSLATE_DELAY_SECONDS)
