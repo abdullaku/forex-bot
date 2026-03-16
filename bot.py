@@ -1,5 +1,8 @@
 import asyncio
 import logging
+import os
+import threading
+from http.server import HTTPServer, BaseHTTPRequestHandler
 from telegram import Bot
 from sources import NewsScraper
 from translator import translate_to_kurdish
@@ -9,6 +12,17 @@ from datetime import datetime
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+class Handler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.end_headers()
+        self.wfile.write(b'OK')
+    def log_message(self, format, *args):
+        pass
+
+def run_server():
+    HTTPServer(('0.0.0.0', int(os.getenv('PORT', 4000))), Handler).serve_forever()
 
 async def format_post(article):
     emojis = {"economic_news":"📊","technical_analysis":"📈","forex_signal":"🎯","live_rates":"💹"}
@@ -30,6 +44,7 @@ def is_kurdish(text):
     return count > len(text) * 0.2
 
 async def run_bot():
+    threading.Thread(target=run_server, daemon=True).start()
     bot = Bot(token=Config.BOT_TOKEN)
     scraper = NewsScraper()
     await setup_db()
