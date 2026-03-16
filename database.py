@@ -1,36 +1,38 @@
 import os
 import logging
-import psycopg2
+import aiohttp
+import json
 
 logger = logging.getLogger(__name__)
 
-def get_conn():
-    return psycopg2.connect(os.getenv("DATABASE_URL"))
+SUPABASE_URL = os.getenv("SUPABASE_URL", "https://xekpxulamhgplnxfnczp.supabase.co")
+SUPABASE_KEY = os.getenv("SUPABASE_KEY", "")
 
 async def setup_db():
-    conn = get_conn()
-    cur = conn.cursor()
-    cur.execute("""
-        CREATE TABLE IF NOT EXISTS posted_urls (
-            url TEXT PRIMARY KEY,
-            posted_at TIMESTAMP DEFAULT NOW()
-        )
-    """)
-    conn.commit()
-    conn.close()
     logger.info("✅ Database ready!")
 
 async def is_posted(url):
-    conn = get_conn()
-    cur = conn.cursor()
-    cur.execute("SELECT url FROM posted_urls WHERE url=%s", (url,))
-    result = cur.fetchone()
-    conn.close()
-    return result is not None
+    async with aiohttp.ClientSession() as session:
+        async with session.get(
+            f"{SUPABASE_URL}/rest/v1/posted_urls?url=eq.{url}",
+            headers={
+                "apikey": SUPABASE_KEY,
+                "Authorization": f"Bearer {SUPABASE_KEY}"
+            }
+        ) as resp:
+            data = await resp.json()
+            return len(data) > 0
 
 async def mark_posted(url):
-    conn = get_conn()
-    cur = conn.cursor()
-    cur.execute("INSERT INTO posted_urls(url) VALUES(%s) ON CONFLICT DO NOTHING", (url,))
-    conn.commit()
-    conn.close()
+    async with aiohttp.ClientSession() as session:
+        async with session.post(
+            f"{SUPABASE_URL}/rest/v1/posted_urls",
+            headers={
+                "apikey": SUPABASE_KEY,
+                "Authorization": f"Bearer {SUPABASE_KEY}",
+                "Content-Type": "application/json",
+                "Prefer": "return=minimal"
+            },
+            json={"url": url}
+        ) as resp:
+            pass
