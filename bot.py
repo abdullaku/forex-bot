@@ -81,12 +81,22 @@ async def run_bot():
                                 parse_mode="HTML"
                             )
                         else:
-                            # ئەگەر وێنەی نەبوو، تەنها نووسین بنێرە
-                            await bot.send_message(chat_id=Config.CHANNEL_ID, text=text, parse_mode="HTML")
+                            # ئەگەر وێنەی نەبوو، تەنها نووسین بنێرە و ڕێگری بکە لە Preview
+                            await bot.send_message(
+                                chat_id=Config.CHANNEL_ID, 
+                                text=text, 
+                                parse_mode="HTML",
+                                disable_web_page_preview=True
+                            )
                     except Exception as e:
                         logger.error(f"Error sending photo: {e}")
-                        # ئەگەر وێنەکە کێشەی هەبوو، هەوڵ بدە تەنها نووسینەکە بنێریت
-                        await bot.send_message(chat_id=Config.CHANNEL_ID, text=text, parse_mode="HTML")
+                        # ئەگەر وێنەکە کێشەی هەبوو، بەبێ وێنە و بەبێ Preview بینێرە
+                        await bot.send_message(
+                            chat_id=Config.CHANNEL_ID, 
+                            text=text, 
+                            parse_mode="HTML",
+                            disable_web_page_preview=True
+                        )
                     
                     await save_news(article)
                     logger.info(f"✅ Posted: {article['title_ku'][:40]}")
