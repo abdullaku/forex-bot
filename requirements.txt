@@ -4,3 +4,4 @@ beautifulsoup4
 google-generativeai
 aiosqlite
 lxml
+Flask
