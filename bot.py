@@ -7,7 +7,7 @@ from telegram import Bot
 from sources import NewsScraper
 from translator import translate_to_kurdish
 from config import Config
-from database import setup_db, is_posted, mark_posted
+from database import setup_db, is_posted, mark_posted, save_news
 from datetime import datetime
 
 logging.basicConfig(level=logging.INFO)
@@ -70,6 +70,7 @@ async def run_bot():
                 if article.get('title_ku') and is_kurdish(article['title_ku']):
                     text = await format_post(article)
                     await bot.send_message(chat_id=Config.CHANNEL_ID, text=text, parse_mode="HTML")
+                    await save_news(article)
                     logger.info(f"✅ Posted: {article['title_ku'][:40]}")
                     await asyncio.sleep(Config.POST_DELAY_SECONDS)
                 else:
