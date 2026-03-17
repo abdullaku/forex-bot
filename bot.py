@@ -1,8 +1,6 @@
 import asyncio
 import logging
 import os
-import threading
-from http.server import HTTPServer, BaseHTTPRequestHandler
 from telegram import Bot
 from sources import NewsScraper
 from translator import translate_to_kurdish, generate_daily_analysis
@@ -10,18 +8,12 @@ from config import Config
 from database import setup_db, is_posted, mark_posted, save_news, get_todays_news
 from datetime import datetime
 
+# --- لێرە فایلی keep_alive بانگ دەکەین بۆ ئەوەی سێرڤەرەکە نەخەوێت ---
+from keep_alive import keep_alive
+keep_alive()
+
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
-
-class Handler(BaseHTTPRequestHandler):
-    def do_GET(self):
-        self.send_response(200)
-        self.end_headers()
-        self.wfile.write(b'OK')
-    def log_message(self, format, *args): pass
-
-def run_server():
-    HTTPServer(('0.0.0.0', int(os.getenv('PORT', 4000))), Handler).serve_forever()
 
 async def format_post(article):
     post = f"📰 <b>{article['title_ku']}</b>\n\n"
@@ -37,11 +29,10 @@ def is_kurdish(text):
     return count > len(text) * 0.2
 
 async def run_bot():
-    threading.Thread(target=run_server, daemon=True).start()
     bot = Bot(token=Config.BOT_TOKEN)
     scraper = NewsScraper()
     await setup_db()
-    logger.info("🤖 Forex Bot started with Deep Analysis!")
+    logger.info("🤖 Forex Bot started with Deep Analysis and Keep-Alive!")
     
     last_calendar_day = ""
     last_wrap_day = ""
@@ -96,3 +87,4 @@ async def run_bot():
 
 if __name__ == "__main__":
     asyncio.run(run_bot())
+    
