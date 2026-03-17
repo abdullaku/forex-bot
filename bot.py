@@ -5,9 +5,9 @@ import threading
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from telegram import Bot
 from sources import NewsScraper
-from translator import translate_to_kurdish
+from translator import translate_to_kurdish, generate_daily_analysis
 from config import Config
-from database import setup_db, is_posted, mark_posted, save_news
+from database import setup_db, is_posted, mark_posted, save_news, get_todays_news
 from datetime import datetime
 
 logging.basicConfig(level=logging.INFO)
@@ -18,23 +18,15 @@ class Handler(BaseHTTPRequestHandler):
         self.send_response(200)
         self.end_headers()
         self.wfile.write(b'OK')
-    def log_message(self, format, *args):
-        pass
+    def log_message(self, format, *args): pass
 
 def run_server():
     HTTPServer(('0.0.0.0', int(os.getenv('PORT', 4000))), Handler).serve_forever()
 
 async def format_post(article):
-    emojis = {"economic_news":"📊","technical_analysis":"📈","forex_signal":"🎯","live_rates":"💹"}
-    category_names = {"economic_news":"هەواڵی ئابووری","technical_analysis":"ئەنالیزی تەکنیکی","forex_signal":"سگنالی فۆرێکس","live_rates":"نرخی زیندوو"}
-    emoji = emojis.get(article.get("category",""),"📰")
-    category_name = category_names.get(article.get("category",""),"هەواڵ")
-    
-    post = f"{emoji} <b>{article['title_ku']}</b>\n\n"
+    post = f"📰 <b>{article['title_ku']}</b>\n\n"
     post += f"{article['summary_ku']}\n\n"
-    if article.get("pairs"):
-        post += f"💱 {', '.join(article['pairs'])}\n\n"
-    post += f"📌 {article['source']} | {category_name}\n"
+    post += f"📌 {article['source']}\n"
     post += f"🔗 <a href='{article['url']}'>بینە هەواڵەکە لە سەرچاوە</a>\n"
     post += f"🕐 {datetime.now().strftime('%H:%M | %d/%m/%Y')}"
     return post
@@ -49,7 +41,7 @@ async def run_bot():
     bot = Bot(token=Config.BOT_TOKEN)
     scraper = NewsScraper()
     await setup_db()
-    logger.info("🤖 Forex Bot started with Advanced Features!")
+    logger.info("🤖 Forex Bot started with Deep Analysis!")
     
     last_calendar_day = ""
     last_wrap_day = ""
@@ -60,33 +52,31 @@ async def run_bot():
             current_hour = now.hour
             current_day = now.strftime("%Y-%m-%d")
 
-            # --- ١. ناردنی ئەجێندای ئابووری (کاتژمێر ٩ ی بەیانی) ---
+            # --- ١. ئەجێندای ئابووری (کاتژمێر ٩ ی بەیانی) ---
             if current_hour == 9 and last_calendar_day != current_day:
                 calendar_events = await scraper.fetch_calendar()
                 if calendar_events:
-                    msg = "📅 **گرنگترین هەواڵە ئابوورییەکانی ئەمڕۆ:**\n\n"
-                    msg += "\n".join(calendar_events)
+                    msg = "📅 <b>گرنگترین هەواڵە ئابوورییەکانی ئەمڕۆ:</b>\n\n" + "\n".join(calendar_events)
                     await bot.send_message(chat_id=Config.CHANNEL_ID, text=msg, parse_mode="HTML")
                     last_calendar_day = current_day
-                    logger.info("✅ Economic Calendar posted.")
 
-            # --- ٢. ناردنی کورتەی داخستنی بازاڕ (کاتژمێر ١١ ی شەو) ---
+            # --- ٢. شیکاری قووڵی بازاڕ (کاتژمێر ١١ ی شەو) ---
             if current_hour == 23 and last_wrap_day != current_day:
-                market_wrap = await scraper.fetch_market_wrap()
-                await bot.send_message(chat_id=Config.CHANNEL_ID, text=market_wrap, parse_mode="HTML")
-                last_wrap_day = current_day
-                logger.info("✅ Market Wrap posted.")
+                todays_articles = await get_todays_news()
+                if todays_articles:
+                    analysis_text = await generate_daily_analysis(todays_articles)
+                    await bot.send_message(chat_id=Config.CHANNEL_ID, text=analysis_text, parse_mode="HTML")
+                    last_wrap_day = current_day
+                    logger.info("✅ Deep Analysis posted.")
 
-            # --- ٣. ناردنی هەواڵە ئاساییەکان (وەک پێشوو) ---
+            # --- ٣. وەرگرتنی هەواڵە خێراکان ---
             articles = await scraper.fetch_all()
             for article in articles:
-                clean = article['url'].split('?')[0]
-                if not await is_posted(clean):
-                    await mark_posted(clean)
-                    article['url'] = clean
+                clean_url = article['url'].split('?')[0]
+                if not await is_posted(clean_url):
+                    await mark_posted(clean_url)
+                    article['url'] = clean_url
                     article = await translate_to_kurdish(article)
-                    await asyncio.sleep(Config.TRANSLATE_DELAY_SECONDS)
-                    
                     if article.get('title_ku') and is_kurdish(article['title_ku']):
                         text = await format_post(article)
                         try:
@@ -96,15 +86,13 @@ async def run_bot():
                                 await bot.send_message(chat_id=Config.CHANNEL_ID, text=text, parse_mode="HTML", disable_web_page_preview=True)
                         except:
                             await bot.send_message(chat_id=Config.CHANNEL_ID, text=text, parse_mode="HTML", disable_web_page_preview=True)
-                        
                         await save_news(article)
                         await asyncio.sleep(Config.POST_DELAY_SECONDS)
 
             await asyncio.sleep(Config.CHECK_INTERVAL_SECONDS)
         except Exception as e:
-            logger.error(f"Error in main loop: {e}")
+            logger.error(f"Error: {e}")
             await asyncio.sleep(60)
 
 if __name__ == "__main__":
     asyncio.run(run_bot())
-    
