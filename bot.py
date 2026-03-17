@@ -29,12 +29,13 @@ async def format_post(article):
     category_names = {"economic_news":"هەواڵی ئابووری","technical_analysis":"ئەنالیزی تەکنیکی","forex_signal":"سگنالی فۆرێکس","live_rates":"نرخی زیندوو"}
     emoji = emojis.get(article.get("category",""),"📰")
     category_name = category_names.get(article.get("category",""),"هەواڵ")
-    post = f"{emoji} {article['title_ku']}\n\n"
+    
+    post = f"{emoji} <b>{article['title_ku']}</b>\n\n"
     post += f"{article['summary_ku']}\n\n"
     if article.get("pairs"):
         post += f"💱 {', '.join(article['pairs'])}\n\n"
     post += f"📌 {article['source']} | {category_name}\n"
-    post += f"🔗 <a href='{article['url']}'>بینە هەواڵەکە</a>\n"
+    post += f"🔗 <a href='{article['url']}'>بینە هەواڵەکە لە سەرچاوە</a>\n"
     post += f"🕐 {datetime.now().strftime('%H:%M | %d/%m/%Y')}"
     return post
 
@@ -48,11 +49,8 @@ async def run_bot():
     bot = Bot(token=Config.BOT_TOKEN)
     scraper = NewsScraper()
     await setup_db()
-    logger.info("🤖 Forex Bot started!")
-    await bot.send_message(
-        chat_id=Config.CHANNEL_ID,
-        text="🤖 بۆتی هەواڵی فۆرێکس چالاک بوو!\nهەموو ١٥ خولەکێک هەواڵی نوێ بە کوردی دەنێرم 📊"
-    )
+    logger.info("🤖 Forex Bot started with Image Support!")
+    
     while True:
         try:
             articles = await scraper.fetch_all()
@@ -62,23 +60,45 @@ async def run_bot():
                 if not await is_posted(clean):
                     a['url'] = clean
                     new_articles.append(a)
-            logger.info(f"هەواڵی نوێ: {len(new_articles)}")
+            
+            logger.info(f"هەواڵی نوێ بۆ بڵاوکردنەوە: {len(new_articles)}")
+            
             for article in new_articles:
                 await mark_posted(article['url'])
                 article = await translate_to_kurdish(article)
                 await asyncio.sleep(Config.TRANSLATE_DELAY_SECONDS)
+                
                 if article.get('title_ku') and is_kurdish(article['title_ku']):
                     text = await format_post(article)
-                    await bot.send_message(chat_id=Config.CHANNEL_ID, text=text, parse_mode="HTML")
+                    
+                    try:
+                        # ئەگەر وێنەی هەبوو، بە وێنەوە پۆستی بکە
+                        if article.get('image_url'):
+                            await bot.send_photo(
+                                chat_id=Config.CHANNEL_ID, 
+                                photo=article['image_url'], 
+                                caption=text, 
+                                parse_mode="HTML"
+                            )
+                        else:
+                            # ئەگەر وێنەی نەبوو، تەنها نووسین بنێرە
+                            await bot.send_message(chat_id=Config.CHANNEL_ID, text=text, parse_mode="HTML")
+                    except Exception as e:
+                        logger.error(f"Error sending photo: {e}")
+                        # ئەگەر وێنەکە کێشەی هەبوو، هەوڵ بدە تەنها نووسینەکە بنێریت
+                        await bot.send_message(chat_id=Config.CHANNEL_ID, text=text, parse_mode="HTML")
+                    
                     await save_news(article)
                     logger.info(f"✅ Posted: {article['title_ku'][:40]}")
                     await asyncio.sleep(Config.POST_DELAY_SECONDS)
                 else:
                     logger.warning(f"⚠️ Skipped: {article.get('title_ku','')[:40]}")
+                    
             await asyncio.sleep(Config.CHECK_INTERVAL_SECONDS)
         except Exception as e:
-            logger.error(f"Error: {e}")
+            logger.error(f"Error in main loop: {e}")
             await asyncio.sleep(60)
 
 if __name__ == "__main__":
     asyncio.run(run_bot())
+    
