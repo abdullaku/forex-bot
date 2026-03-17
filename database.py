@@ -1,69 +1,34 @@
-import os
-import logging
-import aiohttp
-import json
-
-logger = logging.getLogger(__name__)
-
-# ئەمانە وەک خۆی لێ بگەڕێ یان لە ناو Render وەک Environment Variables دایبنێ
-SUPABASE_URL = os.getenv("SUPABASE_URL", "https://xekpxulamhgplnxfnczp.supabase.co")
-SUPABASE_KEY = os.getenv("SUPABASE_KEY", "sb_publishable_3i3wA3W-__nQLysnBSB6sQ__Ye-Bn4P")
+import sqlite3
+import aiosqlite
+from datetime import datetime
 
 async def setup_db():
-    logger.info("✅ Database ready with Image and Timestamp support!")
+    async with aiosqlite.connect('news.db') as db:
+        await db.execute('''CREATE TABLE IF NOT EXISTS news 
+            (url TEXT PRIMARY KEY, title TEXT, timestamp TEXT)''')
+        await db.commit()
 
 async def is_posted(url):
-    async with aiohttp.ClientSession() as session:
-        async with session.get(
-            f"{SUPABASE_URL}/rest/v1/posted_urls?url=eq.{url}",
-            headers={
-                "apikey": SUPABASE_KEY,
-                "Authorization": f"Bearer {SUPABASE_KEY}"
-            }
-        ) as resp:
-            data = await resp.json()
-            return len(data) > 0
+    async with aiosqlite.connect('news.db') as db:
+        async with db.execute("SELECT 1 FROM news WHERE url = ?", (url,)) as cursor:
+            return await cursor.fetchone() is not None
 
 async def mark_posted(url):
-    async with aiohttp.ClientSession() as session:
-        async with session.post(
-            f"{SUPABASE_URL}/rest/v1/posted_urls",
-            headers={
-                "apikey": SUPABASE_KEY,
-                "Authorization": f"Bearer {SUPABASE_KEY}",
-                "Content-Type": "application/json",
-                "Prefer": "return=minimal"
-            },
-            json={"url": url}
-        ) as resp:
-            pass
+    async with aiosqlite.connect('news.db') as db:
+        await db.execute("INSERT OR IGNORE INTO news (url) VALUES (?)", (url,))
+        await db.commit()
 
 async def save_news(article):
-    async with aiohttp.ClientSession() as session:
-        # ئامادەکردنی زانیارییەکان بۆ ناردن بۆ Supabase
-        # لێرەدا image_url و published_at زیاد کراوە
-        payload = {
-            "title_ku": article.get("title_ku", ""),
-            "summary_ku": article.get("summary_ku", ""),
-            "source": article.get("source", ""),
-            "url": article.get("url", ""),
-            "pairs": ", ".join(article.get("pairs", [])),
-            "image_url": article.get("image_url", ""),
-            "published_at": article.get("published_at", "")
-        }
-        
-        async with session.post(
-            f"{SUPABASE_URL}/rest/v1/news",
-            headers={
-                "apikey": SUPABASE_KEY,
-                "Authorization": f"Bearer {SUPABASE_KEY}",
-                "Content-Type": "application/json",
-                "Prefer": "return=minimal"
-            },
-            json=payload
-        ) as resp:
-            if resp.status != 201 and resp.status != 200:
-                logger.error(f"❌ Error saving to Supabase: {resp.status}")
-            else:
-                logger.info("✅ News saved to Supabase successfully!")
-                
+    async with aiosqlite.connect('news.db') as db:
+        now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        await db.execute("UPDATE news SET title = ?, timestamp = ? WHERE url = ?", 
+                         (article['title'], now, article['url']))
+        await db.commit()
+
+async def get_todays_news():
+    today = datetime.now().strftime('%Y-%m-%d')
+    async with aiosqlite.connect('news.db') as db:
+        # ئەم بەشە زۆر گرنگە بۆ AI، چونکە هەموو هەواڵەکانی ئەمڕۆ کۆدەکاتەوە
+        async with db.execute("SELECT title FROM news WHERE timestamp LIKE ?", (f"{today}%",)) as cursor:
+            rows = await cursor.fetchall()
+            return [{"title": row[0]} for row in rows if row[0]]
