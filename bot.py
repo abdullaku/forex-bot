@@ -49,61 +49,57 @@ async def run_bot():
     bot = Bot(token=Config.BOT_TOKEN)
     scraper = NewsScraper()
     await setup_db()
-    logger.info("🤖 Forex Bot started with Image Support!")
+    logger.info("🤖 Forex Bot started with Advanced Features!")
     
+    last_calendar_day = ""
+    last_wrap_day = ""
+
     while True:
         try:
+            now = datetime.now()
+            current_hour = now.hour
+            current_day = now.strftime("%Y-%m-%d")
+
+            # --- ١. ناردنی ئەجێندای ئابووری (کاتژمێر ٩ ی بەیانی) ---
+            if current_hour == 9 and last_calendar_day != current_day:
+                calendar_events = await scraper.fetch_calendar()
+                if calendar_events:
+                    msg = "📅 **گرنگترین هەواڵە ئابوورییەکانی ئەمڕۆ:**\n\n"
+                    msg += "\n".join(calendar_events)
+                    await bot.send_message(chat_id=Config.CHANNEL_ID, text=msg, parse_mode="HTML")
+                    last_calendar_day = current_day
+                    logger.info("✅ Economic Calendar posted.")
+
+            # --- ٢. ناردنی کورتەی داخستنی بازاڕ (کاتژمێر ١١ ی شەو) ---
+            if current_hour == 23 and last_wrap_day != current_day:
+                market_wrap = await scraper.fetch_market_wrap()
+                await bot.send_message(chat_id=Config.CHANNEL_ID, text=market_wrap, parse_mode="HTML")
+                last_wrap_day = current_day
+                logger.info("✅ Market Wrap posted.")
+
+            # --- ٣. ناردنی هەواڵە ئاساییەکان (وەک پێشوو) ---
             articles = await scraper.fetch_all()
-            new_articles = []
-            for a in articles:
-                clean = a['url'].split('?')[0]
+            for article in articles:
+                clean = article['url'].split('?')[0]
                 if not await is_posted(clean):
-                    a['url'] = clean
-                    new_articles.append(a)
-            
-            logger.info(f"هەواڵی نوێ بۆ بڵاوکردنەوە: {len(new_articles)}")
-            
-            for article in new_articles:
-                await mark_posted(article['url'])
-                article = await translate_to_kurdish(article)
-                await asyncio.sleep(Config.TRANSLATE_DELAY_SECONDS)
-                
-                if article.get('title_ku') and is_kurdish(article['title_ku']):
-                    text = await format_post(article)
+                    await mark_posted(clean)
+                    article['url'] = clean
+                    article = await translate_to_kurdish(article)
+                    await asyncio.sleep(Config.TRANSLATE_DELAY_SECONDS)
                     
-                    try:
-                        # ئەگەر وێنەی هەبوو، بە وێنەوە پۆستی بکە
-                        if article.get('image_url'):
-                            await bot.send_photo(
-                                chat_id=Config.CHANNEL_ID, 
-                                photo=article['image_url'], 
-                                caption=text, 
-                                parse_mode="HTML"
-                            )
-                        else:
-                            # ئەگەر وێنەی نەبوو، تەنها نووسین بنێرە و ڕێگری بکە لە Preview
-                            await bot.send_message(
-                                chat_id=Config.CHANNEL_ID, 
-                                text=text, 
-                                parse_mode="HTML",
-                                disable_web_page_preview=True
-                            )
-                    except Exception as e:
-                        logger.error(f"Error sending photo: {e}")
-                        # ئەگەر وێنەکە کێشەی هەبوو، بەبێ وێنە و بەبێ Preview بینێرە
-                        await bot.send_message(
-                            chat_id=Config.CHANNEL_ID, 
-                            text=text, 
-                            parse_mode="HTML",
-                            disable_web_page_preview=True
-                        )
-                    
-                    await save_news(article)
-                    logger.info(f"✅ Posted: {article['title_ku'][:40]}")
-                    await asyncio.sleep(Config.POST_DELAY_SECONDS)
-                else:
-                    logger.warning(f"⚠️ Skipped: {article.get('title_ku','')[:40]}")
-                    
+                    if article.get('title_ku') and is_kurdish(article['title_ku']):
+                        text = await format_post(article)
+                        try:
+                            if article.get('image_url'):
+                                await bot.send_photo(chat_id=Config.CHANNEL_ID, photo=article['image_url'], caption=text, parse_mode="HTML")
+                            else:
+                                await bot.send_message(chat_id=Config.CHANNEL_ID, text=text, parse_mode="HTML", disable_web_page_preview=True)
+                        except:
+                            await bot.send_message(chat_id=Config.CHANNEL_ID, text=text, parse_mode="HTML", disable_web_page_preview=True)
+                        
+                        await save_news(article)
+                        await asyncio.sleep(Config.POST_DELAY_SECONDS)
+
             await asyncio.sleep(Config.CHECK_INTERVAL_SECONDS)
         except Exception as e:
             logger.error(f"Error in main loop: {e}")
