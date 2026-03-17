@@ -2,6 +2,7 @@ import asyncio
 import aiohttp
 import logging
 from datetime import datetime
+import xml.etree.ElementTree as ET
 
 logger = logging.getLogger(__name__)
 
@@ -13,22 +14,7 @@ class NewsScraper:
     }
 
     FOREX_PAIRS = ["EUR/USD", "GBP/USD", "USD/JPY", "XAU/USD", "GOLD", "WTI", "OIL", "USD"]
-
-    PRIORITY_KEYWORDS = [
-        "CPI", "NFP", "GDP", "Fed", "Federal Reserve", "ECB", "inflation",
-        "interest rate", "FOMC", "recession", "tariff", "Bank of England",
-        "central bank", "monetary policy", "gold", "oil", "crude"
-    ]
-
-    FOREX_KEYWORDS = [
-        "forex", "currency", "dollar", "euro", "pound", "yen", "gold", "oil",
-        "inflation", "interest rate", "fed", "ecb", "cpi", "nfp", "gdp",
-        "market", "bullish", "bearish", "trade", "economy", "bank", "rate",
-        "USD", "EUR", "GBP", "JPY", "central bank", "monetary", "crude",
-        "treasury", "yield", "bond", "reserve", "Goldman", "JPMorgan",
-        "Federal Reserve", "European Central Bank", "Bank of England",
-        "surge", "fall", "volatility", "outlook", "forecast"
-    ]
+    FOREX_KEYWORDS = ["forex", "currency", "dollar", "euro", "pound", "yen", "gold", "oil", "inflation", "fed", "cpi", "market"]
 
     def detect_pairs(self, text):
         return [p for p in self.FOREX_PAIRS if p.upper() in text.upper()]
@@ -44,24 +30,32 @@ class NewsScraper:
                 async with session.get(feed_info["url"], timeout=aiohttp.ClientTimeout(total=15)) as resp:
                     if resp.status == 200:
                         text = await resp.text()
-                        import xml.etree.ElementTree as ET
                         root = ET.fromstring(text)
-                        ns = {'atom': 'http://www.w3.org/2005/Atom'}
+                        ns = {'atom': 'http://www.w3.org/2005/Atom', 'media': 'http://search.yahoo.com/mrss/'}
                         items = root.findall('.//item') or root.findall('.//atom:entry', ns)
+                        
                         for item in items[:5]:
                             title = (item.findtext('title') or item.findtext('atom:title', namespaces=ns) or "").strip()
                             summary = (item.findtext('description') or item.findtext('atom:summary', namespaces=ns) or "").strip()
                             url = (item.findtext('link') or item.findtext('atom:link', namespaces=ns) or "").strip()
+                            
+                            # دۆزینەوەی وێنە
+                            image_url = None
+                            media = item.find('{http://search.yahoo.com/mrss/}content') or item.find('{http://search.yahoo.com/mrss/}thumbnail')
+                            if media is not None:
+                                image_url = media.get('url')
+
                             if not self.is_forex_relevant(title, summary):
                                 continue
+                                
                             articles.append({
                                 "title": title, "summary": summary[:500],
                                 "url": url, "source": source_name,
                                 "category": feed_info["category"],
                                 "pairs": self.detect_pairs(title + " " + summary),
-                                "is_priority": any(k.upper() in (title + summary).upper() for k in self.PRIORITY_KEYWORDS),
-                                "published": datetime.now().isoformat(),
-                                "title_ku": "", "summary_ku": "", "signal": None
+                                "image_url": image_url,
+                                "published_at": datetime.now().isoformat(),
+                                "title_ku": "", "summary_ku": ""
                             })
         except Exception as e:
             logger.error(f"Error fetching {source_name}: {e}")
@@ -80,5 +74,5 @@ class NewsScraper:
                         seen_urls.add(clean)
                         article['url'] = clean
                         all_articles.append(article)
-        logger.info(f"Fetched {len(all_articles)} articles")
         return all_articles
+        
