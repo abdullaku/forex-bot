@@ -2,33 +2,40 @@ import asyncio
 import aiohttp
 import logging
 from datetime import datetime
-from config import Config
 
 logger = logging.getLogger(__name__)
 
 class NewsScraper:
     RSS_FEEDS = {
-        "FXStreet": {"url": "https://www.fxstreet.com/rss", "category": "technical_analysis"},
-        "DailyFX": {"url": "https://www.dailyfx.com/feeds/all", "category": "forex_signal"},
-        "Investing": {"url": "https://www.investing.com/rss/news.rss", "category": "economic_news"},
-        "ForexLive": {"url": "https://www.forexlive.com/feed/news", "category": "economic_news"},
         "CNBC": {"url": "https://www.cnbc.com/id/10000664/device/rss/rss.html", "category": "economic_news"},
-        "Yahoo Finance": {"url": "https://finance.yahoo.com/news/rssindex", "category": "economic_news"},
-        "Benzinga": {"url": "https://www.benzinga.com/feed", "category": "economic_news"},
-        "Zerohedge": {"url": "https://feeds.feedburner.com/zerohedge/feed", "category": "economic_news"},
-        "Seeking Alpha": {"url": "https://seekingalpha.com/feed.xml", "category": "economic_news"},
-        "Bloomberg Markets": {"url": "https://feeds.bloomberg.com/markets/news.rss", "category": "economic_news"},
+        "Bloomberg": {"url": "https://feeds.bloomberg.com/markets/news.rss", "category": "economic_news"},
+        "Fox Business": {"url": "https://moxie.foxbusiness.com/google-publisher/markets.xml", "category": "economic_news"},
     }
-    FOREX_PAIRS = ["EUR/USD","GBP/USD","USD/JPY","XAU/USD","GOLD","WTI","OIL"]
-    PRIORITY_KEYWORDS = ["CPI","NFP","GDP","Fed","ECB","inflation","interest rate","FOMC","recession","tariff"]
+
+    FOREX_PAIRS = ["EUR/USD", "GBP/USD", "USD/JPY", "XAU/USD", "GOLD", "WTI", "OIL", "USD"]
+
+    PRIORITY_KEYWORDS = [
+        "CPI", "NFP", "GDP", "Fed", "Federal Reserve", "ECB", "inflation",
+        "interest rate", "FOMC", "recession", "tariff", "Bank of England",
+        "central bank", "monetary policy", "gold", "oil", "crude"
+    ]
+
+    FOREX_KEYWORDS = [
+        "forex", "currency", "dollar", "euro", "pound", "yen", "gold", "oil",
+        "inflation", "interest rate", "fed", "ecb", "cpi", "nfp", "gdp",
+        "market", "bullish", "bearish", "trade", "economy", "bank", "rate",
+        "USD", "EUR", "GBP", "JPY", "central bank", "monetary", "crude",
+        "treasury", "yield", "bond", "reserve", "Goldman", "JPMorgan",
+        "Federal Reserve", "European Central Bank", "Bank of England",
+        "surge", "fall", "volatility", "outlook", "forecast"
+    ]
 
     def detect_pairs(self, text):
         return [p for p in self.FOREX_PAIRS if p.upper() in text.upper()]
 
     def is_forex_relevant(self, title, summary):
         text = (title + " " + summary).lower()
-        keywords = ["forex","currency","dollar","euro","pound","yen","gold","oil","inflation","interest rate","fed","ecb","cpi","nfp","gdp","market","bullish","bearish","stock","trade","economy","bank","rate"]
-        return any(k in text for k in keywords)
+        return any(k.lower() in text for k in self.FOREX_KEYWORDS)
 
     async def fetch_rss(self, source_name, feed_info):
         articles = []
@@ -52,7 +59,7 @@ class NewsScraper:
                                 "url": url, "source": source_name,
                                 "category": feed_info["category"],
                                 "pairs": self.detect_pairs(title + " " + summary),
-                                "is_priority": any(k.upper() in (title+summary).upper() for k in self.PRIORITY_KEYWORDS),
+                                "is_priority": any(k.upper() in (title + summary).upper() for k in self.PRIORITY_KEYWORDS),
                                 "published": datetime.now().isoformat(),
                                 "title_ku": "", "summary_ku": "", "signal": None
                             })
