@@ -1,48 +1,110 @@
-import google.generativeai as genai
+import aiohttp
+import json
+import re
 from config import Config
 
-genai.configure(api_key=Config.GEMINI_API_KEY)
-model = genai.GenerativeModel('gemini-1.5-flash')
+def extract_json(text):
+    try:
+        return json.loads(text)
+    except:
+        pass
+    try:
+        match = re.search(r'\{.*?\}', text, re.DOTALL)
+        if match:
+            return json.loads(match.group())
+    except:
+        pass
+    return None
 
 async def translate_to_kurdish(article):
-    prompt = f"Translate the following finance news to Sorani Kurdish. Keep it professional and concise.\nTitle: {article['title']}\nSummary: {article['summary']}"
+    title = article['title'][:100]
+    summary = re.sub(r'<[^>]+>', '', article.get('summary', ''))[:300].strip()
+    
+    prompt = f"""You are a Kurdish Sorani translator. Translate the news below to Kurdish Sorani.
+Return ONLY a JSON object like this example:
+{{"title_ku": "ناونیشانی کوردی", "summary_ku": "پوختەی کوردی لێرەدا"}}
+
+News Title: {title}
+News Summary: {summary}
+
+JSON:"""
+
     try:
-        response = model.generate_content(prompt)
-        lines = response.text.strip().split('\n')
-        article['title_ku'] = lines[0].replace('Title:', '').strip()
-        article['summary_ku'] = "\n".join(lines[1:]).replace('Summary:', '').strip()
-    except:
-        article['title_ku'] = article['title']
-        article['summary_ku'] = article['summary']
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                "https://api.groq.com/openai/v1/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {Config.GROQ_API_KEY}",
+                    "Content-Type": "application/json"
+                },
+                json={
+                    "model": "llama-3.3-70b-versatile",
+                    "messages": [{"role": "user", "content": prompt}],
+                    "max_tokens": 400,
+                    "temperature": 0.1
+                },
+                timeout=aiohttp.ClientTimeout(total=30)
+            ) as resp:
+                if resp.status == 200:
+                    data = await resp.json()
+                    raw = data["choices"][0]["message"]["content"].strip()
+                    result = extract_json(raw)
+                    if result:
+                        article["title_ku"] = result.get("title_ku", title)
+                        article["summary_ku"] = result.get("summary_ku", summary)
+                    else:
+                        article["title_ku"] = title
+                        article["summary_ku"] = summary
+                else:
+                    article["title_ku"] = title
+                    article["summary_ku"] = summary
+    except Exception as e:
+        article["title_ku"] = title
+        article["summary_ku"] = summary
     return article
 
 async def generate_daily_analysis(articles):
-    titles = "\n".join([f"- {a['title']}" for a in articles])
-    prompt = f"""
-    تۆ شارەزایەکی بازاڕی فۆرێکسی. ئەمە لیستی ناونیشانی هەواڵەکانی ئەمڕۆیە:
-    {titles}
-    
-    تکایە شیکارییەکی قووڵ و کورت (Deep Analysis) بە زمانی کوردی بنووسە و ئەم ئیمۆجیانە بەکاربهێنە:
-    - بۆ دۆلار و ئەمریکا: 🇺🇸
-    - بۆ یۆرۆ و ئەوروپا: 🇪🇺
-    - بۆ پاوەند و بەریتانیا: 🇬🇧
-    - بۆ زێڕ: 🟡 یان 🏆
-    - بۆ نەوت: 🛢️
-    - بۆ هەواڵی ئەرێنی: ✅ یان 📈
-    - بۆ هەواڵی نەرێنی: ❌ یان 📉
-    
-    شێوازی نووسین:
-    1. کورتەیەک لەسەر جووڵەی بازاڕی ئەمڕۆ.
-    2. کاریگەری ئەم هەواڵانە لەسەر (زێڕ، دۆلار، یان نەوت).
-    3. ئاڕاستەی پێشبینیکراو بۆ سبەینێ.
-    
-    بە شێوازێکی پڕۆفیشناڵ بینووسە و لە کۆتاییدا بەم ئیمۆجییە دایبخە: 🏁
-    سەرەتا بنووسە: 📊 <b>شیکاری قووڵی بازاڕ (کۆتایی ڕۆژ)</b>
-    """
+    titles = "\n".join([f"- {a.get('title', '')}" for a in articles])
+    prompt = f"""تۆ شارەزایەکی بازاڕی فۆرێکسی. ئەمە لیستی ناونیشانی هەواڵەکانی ئەمڕۆیە:
+{titles}
+
+تکایە شیکارییەکی قووڵ و کورت (Deep Analysis) بە زمانی کوردی بنووسە و ئەم ئیمۆجیانە بەکاربهێنە:
+- بۆ دۆلار و ئەمریکا: 🇺🇸
+- بۆ یۆرۆ و ئەوروپا: 🇪🇺
+- بۆ پاوەند و بەریتانیا: 🇬🇧
+- بۆ زێڕ: 🟡 یان 🏆
+- بۆ نەوت: 🛢️
+- بۆ هەواڵی ئەرێنی: ✅ یان 📈
+- بۆ هەواڵی نەرێنی: ❌ یان 📉
+
+شێوازی نووسین:
+1. کورتەیەک لەسەر جووڵەی بازاڕی ئەمڕۆ.
+2. کاریگەری ئەم هەواڵانە لەسەر (زێڕ، دۆلار، یان نەوت).
+3. ئاڕاستەی پێشبینیکراو بۆ سبەینێ.
+
+بە شێوازێکی پڕۆفیشناڵ بینووسە و لە کۆتاییدا بەم ئیمۆجییە دایبخە: 🏁
+سەرەتا بنووسە: 📊 <b>شیکاری قووڵی بازاڕ (کۆتایی ڕۆژ)</b>"""
+
     try:
-        response = model.generate_content(prompt)
-        # لێرەدا دەقەکە وەردەگرین و ئەگەر پێویست بکات پاکی دەکەینەوە
-        analysis_text = response.text.strip()
-        return analysis_text
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                "https://api.groq.com/openai/v1/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {Config.GROQ_API_KEY}",
+                    "Content-Type": "application/json"
+                },
+                json={
+                    "model": "llama-3.3-70b-versatile",
+                    "messages": [{"role": "user", "content": prompt}],
+                    "max_tokens": 800,
+                    "temperature": 0.3
+                },
+                timeout=aiohttp.ClientTimeout(total=60)
+            ) as resp:
+                if resp.status == 200:
+                    data = await resp.json()
+                    return data["choices"][0]["message"]["content"].strip()
+                else:
+                    return "⚠️ ناتوانرێت شیکارییەکە دروست بکرێت"
     except Exception as e:
         return f"⚠️ ناتوانرێت شیکارییەکە دروست بکرێت: {str(e)}"
