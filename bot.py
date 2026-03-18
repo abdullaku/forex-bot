@@ -6,7 +6,7 @@ from sources import NewsScraper
 from translator import translate_to_kurdish, generate_daily_analysis
 from config import Config
 from database import setup_db, is_posted, mark_posted, save_news, get_todays_news
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 
 from keep_alive import keep_alive
 keep_alive()
@@ -14,12 +14,14 @@ keep_alive()
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+BAGHDAD_TZ = timezone(timedelta(hours=3))
+
 async def format_post(article):
     post = f"📰 <b>{article['title_ku']}</b>\n\n"
     post += f"{article['summary_ku']}\n\n"
     post += f"📌 {article['source']}\n"
     post += f"🔗 <a href='{article['url']}'>بینە هەواڵەکە لە سەرچاوە</a>\n"
-    post += f"🕐 {datetime.now().strftime('%H:%M | %d/%m/%Y')}"
+    post += f"🕐 {datetime.now(BAGHDAD_TZ).strftime('%H:%M | %d/%m/%Y')}"
     return post
 
 def is_kurdish(text):
@@ -38,7 +40,7 @@ async def run_bot():
 
     while True:
         try:
-            now = datetime.now()
+            now = datetime.now(BAGHDAD_TZ)
             current_hour = now.hour
             current_day = now.strftime("%Y-%m-%d")
 
