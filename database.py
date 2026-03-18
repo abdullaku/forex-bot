@@ -42,8 +42,8 @@ async def save_news(article):
         )
 
 async def get_todays_news():
-    from datetime import datetime
-    today = datetime.now().strftime('%Y-%m-%d')
+    from datetime import datetime, timezone, timedelta
+    today = datetime.now(timezone(timedelta(hours=3))).strftime('%Y-%m-%d')
     async with aiohttp.ClientSession() as session:
         async with session.get(
             f"{SUPABASE_URL}/rest/v1/news?published_at=gte.{today}&select=title_ku",
