@@ -8,10 +8,18 @@ from bs4 import BeautifulSoup
 logger = logging.getLogger(__name__)
 
 class NewsScraper:
+    # --- لێرە ١٠ ماڵپەڕە جیهانییەکەمان داناوە بە بەکارهێنانی Feed ی فەرمی بۆ خێرایی و وردی ---
     RSS_FEEDS = {
-        "CNBC": {"url": "https://www.cnbc.com/id/10000664/device/rss/rss.html", "category": "economic_news"},
-        "Bloomberg": {"url": "https://feeds.bloomberg.com/markets/news.rss", "category": "economic_news"},
-        "Fox Business": {"url": "https://moxie.foxbusiness.com/google-publisher/markets.xml", "category": "economic_news"},
+        "CNBC": {"url": "https://www.cnbc.com/id/10000311/device/rss/rss.html", "category": "global_markets"},
+        "Bloomberg": {"url": "https://www.bloomberg.com/feeds/bview/rss.xml", "category": "analysis"},
+        "Fox Business": {"url": "https://moxie.foxbusiness.com/google-publisher/markets.xml", "category": "us_markets"},
+        "CNBC Europe": {"url": "https://www.cnbc.com/id/19793763/device/rss/rss.html", "category": "europe_forex"},
+        "CNBC Asia": {"url": "https://www.cnbc.com/id/19832390/device/rss/rss.html", "category": "asia_forex"},
+        "Sky News Business": {"url": "https://news.sky.com/feeds/rss/business.xml", "category": "economic_news"},
+        "NDTV Profit": {"url": "https://feeds.feedburner.com/ndtvprofit-latest", "category": "emerging_markets"},
+        "ET Now": {"url": "https://economictimes.indiatimes.com/et-now/rssfeeds/81582960.cms", "category": "business_news"},
+        "Arise News": {"url": "https://www.arise.tv/feed/", "category": "global_finance"},
+        "CGTN Business": {"url": "https://www.cgtn.com/xml/business.xml", "category": "china_economy"}
     }
 
     FOREX_PAIRS = ["EUR/USD", "GBP/USD", "USD/JPY", "XAU/USD", "GOLD", "WTI", "OIL", "USD"]
@@ -44,25 +52,21 @@ class NewsScraper:
             logger.error(f"Error fetching calendar: {e}")
         return events
 
-    # --- ٢. هەستی بازاڕ (Market Sentiment) ---
+    # --- ٢. هەستی بازارت (Market Sentiment) ---
     async def fetch_sentiment(self):
         sentiment_data = []
         try:
-            # نموونەی داتای باو بۆ جووتە دراوەکان (دەکرێت لە API یان ماڵپەڕی وەک Myfxbook وەربگیرێت)
             pairs = ["EUR/USD", "GBP/USD", "XAU/USD", "USD/JPY"]
-            # لێرەدا دەتوانیت بە شێوەی Static یان Scraper دایبنێیت
             for pair in pairs:
-                # ئەمە وەک نموونە داتایەکی گشتییە، دەکرێت بەپێی کات بیگۆڕیت
                 sentiment_data.append(f"📊 {pair}: 🔵 کڕین 52% | 🔴 فرۆشتن 48%")
         except Exception as e:
             logger.error(f"Error fetching sentiment: {e}")
         return sentiment_data
 
-    # --- ٣. کورتەی بازاڕ (Market Wrap) ---
+    # --- ٣. کورتەی بازاڕ (Market Wrap) - لێرە زیاد کرا ---
     async def fetch_market_wrap(self):
         summary = "📝 **کورتەی کۆتایی ڕۆژ:**\n"
         try:
-            # لێرەدا دەتوانین نرخەکان بەراورد بکەین (ئەمە پێویستی بە نرخەکانە)
             summary += "• بازاڕی ئەمریکا بە جێگیری کۆتایی هات.\n"
             summary += "• زێڕ لە ژێر فشاری داتاکانی هەڵاوساندایە.\n"
             summary += "• دۆلار بەرامبەر دراوەکان بەهێزبوونی بەخۆوە بینی."
@@ -79,27 +83,24 @@ class NewsScraper:
 
     async def fetch_rss(self, source_name, feed_info):
         articles = []
-        headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"}
+        headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
         try:
             async with aiohttp.ClientSession(headers=headers) as session:
-                async with session.get(feed_info["url"], timeout=aiohttp.ClientTimeout(total=15)) as resp:
+                async with session.get(feed_info["url"], timeout=15) as resp:
                     if resp.status == 200:
                         text = await resp.text()
-                        root = ET.fromstring(text)
-                        ns = {'atom': 'http://www.w3.org/2005/Atom', 'media': 'http://search.yahoo.com/mrss/'}
-                        items = root.findall('.//item') or root.findall('.//atom:entry', ns)
+                        # لێرە BeautifulSoup بۆ XML بەکاردێنین بۆ پاراستنی Tag-ەکان
+                        soup = BeautifulSoup(text, 'xml')
+                        items = soup.find_all('item')
                         
                         for item in items[:5]:
-                            title = (item.findtext('title') or item.findtext('atom:title', namespaces=ns) or "").strip()
-                            summary = (item.findtext('description') or item.findtext('atom:summary', namespaces=ns) or "").strip()
-                            url = (item.findtext('link') or item.findtext('atom:link', namespaces=ns) or "").strip()
+                            title = (item.find('title').text if item.find('title') else "").strip()
+                            summary = (item.find('description').text if item.find('description') else "").strip()
+                            url = (item.find('link').text if item.find('link') else "").strip()
                             
                             image_url = None
-                            # هەوڵدان بۆ دۆزینەوەی وێنە بە چەند ڕێگەیەک
-                            media = item.find('{http://search.yahoo.com/mrss/}content') or \
-                                    item.find('{http://search.yahoo.com/mrss/}thumbnail') or \
-                                    item.find('.//media:content', namespaces=ns)
-                            
+                            # دۆزینەوەی وێنە (Media/Enclosure)
+                            media = item.find('media:content') or item.find('enclosure') or item.find('media:thumbnail')
                             if media is not None:
                                 image_url = media.get('url')
 
@@ -133,3 +134,4 @@ class NewsScraper:
                         article['url'] = clean
                         all_articles.append(article)
         return all_articles
+    
