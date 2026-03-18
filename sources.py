@@ -17,7 +17,6 @@ class NewsScraper:
         "Sky News Business": {"url": "https://news.sky.com/feeds/rss/business.xml", "category": "economic_news"},
         "NDTV Profit": {"url": "https://feeds.feedburner.com/ndtvprofit-latest", "category": "emerging_markets"},
         "ET Now": {"url": "https://economictimes.indiatimes.com/et-now/rssfeeds/81582960.cms", "category": "business_news"},
-        "Arise News": {"url": "https://www.arise.tv/feed/", "category": "global_finance"},
         "CGTN Business": {"url": "https://www.cgtn.com/xml/business.xml", "category": "china_economy"}
     }
 
