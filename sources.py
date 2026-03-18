@@ -8,7 +8,6 @@ from bs4 import BeautifulSoup
 logger = logging.getLogger(__name__)
 
 class NewsScraper:
-    # --- لێرە ١٠ ماڵپەڕە جیهانییەکەمان داناوە بە بەکارهێنانی Feed ی فەرمی بۆ خێرایی و وردی ---
     RSS_FEEDS = {
         "CNBC": {"url": "https://www.cnbc.com/id/10000311/device/rss/rss.html", "category": "global_markets"},
         "Bloomberg": {"url": "https://www.bloomberg.com/feeds/bview/rss.xml", "category": "analysis"},
@@ -25,7 +24,6 @@ class NewsScraper:
     FOREX_PAIRS = ["EUR/USD", "GBP/USD", "USD/JPY", "XAU/USD", "GOLD", "WTI", "OIL", "USD"]
     FOREX_KEYWORDS = ["forex", "currency", "dollar", "euro", "pound", "yen", "gold", "oil", "inflation", "fed", "cpi", "market"]
 
-    # --- ١. ئەجێندای ئابووری (Economic Calendar) ---
     async def fetch_calendar(self):
         events = []
         try:
@@ -40,19 +38,16 @@ class NewsScraper:
                         for row in rows[:10]:
                             impact_icons = row.find('td', class_='sentiment').find_all('i', class_='grayFullBullishIcon')
                             impact_level = len(impact_icons)
-                            
-                            if impact_level >= 2: # تەنها هەواڵە گرنگەکان
+                            if impact_level >= 2:
                                 time = row.find('td', class_='time').text.strip()
                                 currency = row.find('td', class_='left flagCur').text.strip()
                                 event = row.find('td', class_='event').text.strip()
-                                
                                 emoji = "🔥" if impact_level == 3 else "⚠️"
                                 events.append(f"{emoji} {time} | {currency} | {event}")
         except Exception as e:
             logger.error(f"Error fetching calendar: {e}")
         return events
 
-    # --- ٢. هەستی بازارت (Market Sentiment) ---
     async def fetch_sentiment(self):
         sentiment_data = []
         try:
@@ -63,7 +58,6 @@ class NewsScraper:
             logger.error(f"Error fetching sentiment: {e}")
         return sentiment_data
 
-    # --- ٣. کورتەی بازاڕ (Market Wrap) - لێرە زیاد کرا ---
     async def fetch_market_wrap(self):
         summary = "📝 **کورتەی کۆتایی ڕۆژ:**\n"
         try:
@@ -89,24 +83,18 @@ class NewsScraper:
                 async with session.get(feed_info["url"], timeout=15) as resp:
                     if resp.status == 200:
                         text = await resp.text()
-                        # لێرە BeautifulSoup بۆ XML بەکاردێنین بۆ پاراستنی Tag-ەکان
                         soup = BeautifulSoup(text, 'xml')
                         items = soup.find_all('item')
-                        
                         for item in items[:5]:
                             title = (item.find('title').text if item.find('title') else "").strip()
                             summary = (item.find('description').text if item.find('description') else "").strip()
                             url = (item.find('link').text if item.find('link') else "").strip()
-                            
                             image_url = None
-                            # دۆزینەوەی وێنە (Media/Enclosure)
                             media = item.find('media:content') or item.find('enclosure') or item.find('media:thumbnail')
                             if media is not None:
                                 image_url = media.get('url')
-
                             if not self.is_forex_relevant(title, summary):
                                 continue
-                                
                             articles.append({
                                 "title": title, "summary": summary[:500],
                                 "url": url, "source": source_name,
@@ -128,10 +116,9 @@ class NewsScraper:
         for result in results:
             if isinstance(result, list):
                 for article in result:
-                    clean = article['url'].split('?')[0]
+                    clean = article['url'].split('?')[0].split('#')[0]
                     if clean not in seen_urls:
                         seen_urls.add(clean)
                         article['url'] = clean
                         all_articles.append(article)
         return all_articles
-    
