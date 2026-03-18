@@ -26,23 +26,23 @@ class NewsScraper:
     async def fetch_calendar(self):
         events = []
         try:
-            url = "https://www.investing.com/economic-calendar/"
-            headers = {"User-Agent": "Mozilla/5.0"}
-            async with aiohttp.ClientSession(headers=headers) as session:
+            url = "https://nfs.faireconomy.media/ff_calendar_thisweek.json"
+            async with aiohttp.ClientSession() as session:
                 async with session.get(url) as resp:
                     if resp.status == 200:
-                        soup = BeautifulSoup(await resp.text(), 'html.parser')
-                        table = soup.find('table', id='economicCalendarData')
-                        rows = table.find_all('tr', class_='js-event-item')
-                        for row in rows[:10]:
-                            impact_icons = row.find('td', class_='sentiment').find_all('i', class_='grayFullBullishIcon')
-                            impact_level = len(impact_icons)
-                            if impact_level >= 2:
-                                time = row.find('td', class_='time').text.strip()
-                                currency = row.find('td', class_='left flagCur').text.strip()
-                                event = row.find('td', class_='event').text.strip()
-                                emoji = "🔥" if impact_level == 3 else "⚠️"
-                                events.append(f"{emoji} {time} | {currency} | {event}")
+                        data = await resp.json()
+                        today = datetime.now().strftime('%Y-%m-%d')
+                        for event in data:
+                            if today not in event.get('date', ''):
+                                continue
+                            impact = event.get('impact', '')
+                            if impact not in ['High', 'Medium']:
+                                continue
+                            currency = event.get('currency', '')
+                            title = event.get('title', '')
+                            time = event.get('date', '').split('T')[1][:5] if 'T' in event.get('date', '') else ''
+                            emoji = "🔥" if impact == 'High' else "⚠️"
+                            events.append(f"{emoji} {time} | {currency} | {title}")
         except Exception as e:
             logger.error(f"Error fetching calendar: {e}")
         return events
