@@ -8,7 +8,6 @@ from config import Config
 from database import setup_db, is_posted, mark_posted, save_news, get_todays_news
 from datetime import datetime
 
-# --- لێرە فایلی keep_alive بانگ دەکەین بۆ ئەوەی سێرڤەرەکە نەخەوێت ---
 from keep_alive import keep_alive
 keep_alive()
 
@@ -43,7 +42,6 @@ async def run_bot():
             current_hour = now.hour
             current_day = now.strftime("%Y-%m-%d")
 
-            # --- ١. ئەجێندای ئابووری (کاتژمێر ٩ ی بەیانی) ---
             if current_hour == 9 and last_calendar_day != current_day:
                 calendar_events = await scraper.fetch_calendar()
                 if calendar_events:
@@ -51,7 +49,6 @@ async def run_bot():
                     await bot.send_message(chat_id=Config.CHANNEL_ID, text=msg, parse_mode="HTML")
                     last_calendar_day = current_day
 
-            # --- ٢. شیکاری قووڵی بازاڕ (کاتژمێر ١١ ی شەو) ---
             if current_hour == 23 and last_wrap_day != current_day:
                 todays_articles = await get_todays_news()
                 if todays_articles:
@@ -60,10 +57,9 @@ async def run_bot():
                     last_wrap_day = current_day
                     logger.info("✅ Deep Analysis posted.")
 
-            # --- ٣. وەرگرتنی هەواڵە خێراکان ---
             articles = await scraper.fetch_all()
             for article in articles:
-                clean_url = article['url'].split('?')[0]
+                clean_url = article['url'].split('?')[0].split('#')[0]
                 if not await is_posted(clean_url):
                     await mark_posted(clean_url)
                     article['url'] = clean_url
@@ -87,4 +83,3 @@ async def run_bot():
 
 if __name__ == "__main__":
     asyncio.run(run_bot())
-    
