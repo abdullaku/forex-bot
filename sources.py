@@ -14,10 +14,7 @@ class NewsScraper:
         "Fox Business": {"url": "https://moxie.foxbusiness.com/google-publisher/markets.xml", "category": "us_markets"},
         "CNBC Europe": {"url": "https://www.cnbc.com/id/19793763/device/rss/rss.html", "category": "europe_forex"},
         "CNBC Asia": {"url": "https://www.cnbc.com/id/19832390/device/rss/rss.html", "category": "asia_forex"},
-        "Sky News Business": {"url": "https://news.sky.com/feeds/rss/business.xml", "category": "economic_news"},
-        "NDTV Profit": {"url": "https://feeds.feedburner.com/ndtvprofit-latest", "category": "emerging_markets"},
-        "ET Now": {"url": "https://economictimes.indiatimes.com/et-now/rssfeeds/81582960.cms", "category": "business_news"},
-        "CGTN Business": {"url": "https://www.cgtn.com/xml/business.xml", "category": "china_economy"}
+        "Bloomberg Quicktake": {"url": "https://feeds.bloomberg.com/markets/news.rss", "category": "economic_news"},
     }
 
     FOREX_PAIRS = ["EUR/USD", "GBP/USD", "USD/JPY", "XAU/USD", "GOLD", "WTI", "OIL", "USD"]
