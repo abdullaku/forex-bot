@@ -1,7 +1,7 @@
 import asyncio
 import aiohttp
 import logging
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 import xml.etree.ElementTree as ET
 from bs4 import BeautifulSoup
 
@@ -28,7 +28,7 @@ class NewsScraper:
                 async with session.get(url) as resp:
                     if resp.status == 200:
                         data = await resp.json()
-                        today = datetime.now().strftime('%Y-%m-%d')
+                        today = datetime.now(timezone(timedelta(hours=3))).strftime('%Y-%m-%d')
                         for event in data:
                             if today not in event.get('date', ''):
                                 continue
