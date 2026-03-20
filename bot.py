@@ -19,7 +19,8 @@ BAGHDAD_TZ = timezone(timedelta(hours=3))
 async def format_post(article):
     post = f"📰 <b>{article['title_ku']}</b>\n\n"
     post += f"{article['summary_ku']}\n\n"
-    post += f"📌 {article['source']}\n"
+    source_label = "🇮🇶 هەواڵی ناوەخۆ | Iraq Business News" if article['source'] == "Iraq Business News" else article['source']
+    post += f"📌 {source_label}\n"
     post += f"🔗 <a href='{article['url']}'>بینە هەواڵەکە لە سەرچاوە</a>\n"
     post += f"🕐 {datetime.now(BAGHDAD_TZ).strftime('%H:%M | %d/%m/%Y')}"
     return post
