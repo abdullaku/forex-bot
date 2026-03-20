@@ -30,6 +30,78 @@ def is_kurdish(text):
     count = sum(1 for c in text if c in kurdish_chars)
     return count > len(text) * 0.2
 
+async def check_calendar_alerts(bot, alerted_events, posted_results):
+    try:
+        import aiohttp
+        url = "https://nfs.faireconomy.media/ff_calendar_thisweek.json"
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url) as resp:
+                if resp.status != 200:
+                    return
+                data = await resp.json()
+
+        now = datetime.now(BAGHDAD_TZ)
+        today = now.strftime('%Y-%m-%d')
+
+        for event in data:
+            if today not in event.get('date', ''):
+                continue
+            if event.get('impact') != 'High':
+                continue
+
+            event_id = f"{event.get('date')}_{event.get('title')}_{event.get('currency')}"
+            event_time_str = event.get('date', '')
+            if 'T' not in event_time_str:
+                continue
+
+            event_dt = datetime.fromisoformat(event_time_str.replace('Z', '+00:00'))
+            event_dt_baghdad = event_dt.astimezone(BAGHDAD_TZ)
+            diff_minutes = (event_dt_baghdad - now).total_seconds() / 60
+
+            currency = event.get('currency', '')
+            title = event.get('title', '')
+            forecast = event.get('forecast', 'نادیارە')
+            previous = event.get('previous', 'نادیارە')
+            actual = event.get('actual', None)
+
+            # مەرحەلەی ٣ — ئەنجامی ڕاستەقینە
+            if actual and event_id not in posted_results:
+                posted_results.add(event_id)
+                try:
+                    act_val = float(actual.replace('%', '').replace('K', '').replace('M', '').replace('B', ''))
+                    fore_val = float(forecast.replace('%', '').replace('K', '').replace('M', '').replace('B', ''))
+                    if act_val > fore_val:
+                        result_emoji = "✅ زیاتر — ئەرێنی"
+                    elif act_val < fore_val:
+                        result_emoji = "❌ کەمتر — نەرێنی"
+                    else:
+                        result_emoji = "➡️ وەک پێشبینی"
+                except:
+                    result_emoji = "📊"
+
+                msg = f"🔴 <b>ئەنجامی هەواڵی گرنگ</b>\n\n"
+                msg += f"🏛 {title} | {currency}\n\n"
+                msg += f"▪️ پێشوو: {previous}\n"
+                msg += f"▪️ پێشبینی: {forecast}\n"
+                msg += f"▫️ ئەنجام: <b>{actual}</b>\n\n"
+                msg += f"{result_emoji}\n\n"
+                msg += f"🕐 {now.strftime('%H:%M | %d/%m/%Y')}"
+                await bot.send_message(chat_id=Config.CHANNEL_ID, text=msg, parse_mode="HTML")
+
+            # مەرحەلەی ٢ — ئاگادارکردنەوە ١ کاتژمێر پێش
+            elif not actual and 45 <= diff_minutes <= 75 and event_id not in alerted_events:
+                alerted_events.add(event_id)
+                msg = f"⚠️ <b>ئاگادارکردنەوە — دوای ١ کاتژمێر</b>\n\n"
+                msg += f"🔴 {title} | {currency}\n\n"
+                msg += f"▪️ پێشوو: {previous}\n"
+                msg += f"▪️ پێشبینی: {forecast}\n\n"
+                msg += f"⏰ کات: {event_dt_baghdad.strftime('%H:%M')}\n"
+                msg += f"🕐 {now.strftime('%H:%M | %d/%m/%Y')}"
+                await bot.send_message(chat_id=Config.CHANNEL_ID, text=msg, parse_mode="HTML")
+
+    except Exception as e:
+        logger.error(f"Calendar alert error: {e}")
+
 async def run_bot():
     bot = Bot(token=Config.BOT_TOKEN)
     scraper = NewsScraper()
@@ -38,6 +110,8 @@ async def run_bot():
     
     last_calendar_day = ""
     last_wrap_day = ""
+    alerted_events = set()
+    posted_results = set()
 
     while True:
         try:
@@ -51,6 +125,8 @@ async def run_bot():
                     msg = "📅 <b>گرنگترین هەواڵە ئابوورییەکانی ئەمڕۆ:</b>\n\n" + "\n".join(calendar_events)
                     await bot.send_message(chat_id=Config.CHANNEL_ID, text=msg, parse_mode="HTML")
                     last_calendar_day = current_day
+
+            await check_calendar_alerts(bot, alerted_events, posted_results)
 
             if current_hour == 23 and last_wrap_day != current_day:
                 todays_articles = await get_todays_news()
