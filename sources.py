@@ -22,28 +22,93 @@ class NewsScraper:
     FOREX_KEYWORDS = ["forex", "currency", "dollar", "euro", "pound", "yen", "gold", "oil", "inflation", "fed", "cpi", "market"]
 
     async def fetch_calendar(self):
-        events = []
+        high_events = []
+        medium_events = []
         try:
             url = "https://nfs.faireconomy.media/ff_calendar_thisweek.json"
             async with aiohttp.ClientSession() as session:
                 async with session.get(url) as resp:
                     if resp.status == 200:
                         data = await resp.json()
-                        today = datetime.now(timezone(timedelta(hours=3))).strftime('%Y-%m-%d')
+                        BAGHDAD_TZ = timezone(timedelta(hours=3))
+                        today = datetime.now(BAGHDAD_TZ).strftime('%Y-%m-%d')
+
+                        CURRENCY_FLAGS = {
+                            "USD": "🇺🇸", "EUR": "🇪🇺", "GBP": "🇬🇧",
+                            "JPY": "🇯🇵", "CAD": "🇨🇦", "AUD": "🇦🇺",
+                            "NZD": "🇳🇿", "CHF": "🇨🇭", "CNY": "🇨🇳"
+                        }
+
+                        TITLE_TRANSLATE = {
+                            "m/m": "مانگانە", "y/y": "ساڵانە", "q/q": "چارەکانە",
+                            "CPI": "نرخی بەرزی ژیان", "GDP": "بەرهەمی ناوخۆ",
+                            "NFP": "کارمەندی نوێ", "Retail Sales": "فرۆشتنی لق",
+                            "Interest Rate": "ڕێژەی سوود", "Unemployment": "بێکاری",
+                            "PPI": "نرخی بەرهەمهێنان", "PMI": "پێوەری چالاکی"
+                        }
+
                         for event in data:
                             if today not in event.get('date', ''):
                                 continue
                             impact = event.get('impact', '')
                             if impact not in ['High', 'Medium']:
                                 continue
+
                             currency = event.get('currency', '')
+                            flag = CURRENCY_FLAGS.get(currency, '🌐')
                             title = event.get('title', '')
-                            time = event.get('date', '').split('T')[1][:5] if 'T' in event.get('date', '') else ''
-                            emoji = "🔥" if impact == 'High' else "⚠️"
-                            events.append(f"{emoji} {time} | {currency} | {title}")
+                            forecast = event.get('forecast', '')
+                            previous = event.get('previous', '')
+
+                            for en, ku in TITLE_TRANSLATE.items():
+                                title = title.replace(en, ku)
+
+                            if 'T' in event.get('date', ''):
+                                event_dt = datetime.fromisoformat(event.get('date', '').replace('Z', '+00:00'))
+                                event_dt_baghdad = event_dt.astimezone(BAGHDAD_TZ)
+                                time = event_dt_baghdad.strftime('%H:%M')
+                            else:
+                                time = ''
+
+                            line = f"{flag} {time} | {title}"
+                            if forecast:
+                                line += f"\n▪️ پێشبینی: {forecast}"
+                            if previous:
+                                line += f"\n▪️ پێشوو: {previous}"
+
+                            if impact == 'High':
+                                high_events.append(line)
+                            else:
+                                medium_events.append(line)
+
         except Exception as e:
             logger.error(f"Error fetching calendar: {e}")
-        return events
+
+        # دروستکردنی پۆستی نوێ
+        BAGHDAD_TZ = timezone(timedelta(hours=3))
+        now = datetime.now(BAGHDAD_TZ)
+        day_names = {0: "دووشەممە", 1: "سێشەممە", 2: "چوارشەممە", 3: "پێنجشەممە", 4: "هەینی", 5: "شەممە", 6: "یەکشەممە"}
+        day_name = day_names[now.weekday()]
+        date_str = now.strftime('%d/%m/%Y')
+
+        result = [f"📅 ڕۆژمێری ئابووری | {day_name} {date_str}\n"]
+        result.append("━━━━━━━━━━━━━━━━━━━━")
+
+        if high_events:
+            result.append("🔥 هەواڵی گرنگ")
+            result.append("━━━━━━━━━━━━━━━━━━━━")
+            result.extend(high_events)
+
+        if medium_events:
+            result.append("\n━━━━━━━━━━━━━━━━━━━━")
+            result.append("⚠️ هەواڵی مامناوەند")
+            result.append("━━━━━━━━━━━━━━━━━━━━")
+            result.extend(medium_events)
+
+        result.append("\n━━━━━━━━━━━━━━━━━━━━")
+        result.append("📊 @KurdTraderKRD")
+
+        return result
 
     async def fetch_sentiment(self):
         sentiment_data = []
