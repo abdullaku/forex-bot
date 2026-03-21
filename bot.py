@@ -1,7 +1,10 @@
 import asyncio
 import logging
-import os
-from telegram import Bot
+import threading
+import requests
+from bs4 import BeautifulSoup
+from telegram import Bot, Update
+from telegram.ext import Application, MessageHandler, filters, ContextTypes
 from sources import NewsScraper
 from translator import translate_to_kurdish, generate_daily_analysis
 from config import Config
@@ -15,6 +18,71 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 BAGHDAD_TZ = timezone(timedelta(hours=3))
+
+# FB Sync
+FB_BOT_TOKEN = "8260987281:AAFMfq_-Qx78HnL6GHHqG_4cgefnPsOn7PA"
+FB_CHANNEL_ID = -1003829360084
+FACEBOOK_PAGE_TOKEN = "EAAUuD0sVsdcBRKUnaULvZBgwVj3jQgWGIV97JWb5S3oVpdmGZB5RnXJLYSYqZCgDdOzJN40pZC3zb3H2wErQA9yx9Rdrk4TN6dYPZBsdGqIFZBHPvNJw2Cm9gYV22ZBwcnYWdZAoI8cPmzbj4EeiYXl4YaHI4aRhZB4EVl8ATMiUYF7jUtYHTO7vuVktbfVNHGZA0fZAfZAHxqF6zMKJyIwFOZBXVpurnr38g2elgUukmKgZDZD"
+FACEBOOK_PAGE_ID = "994664793738553"
+
+def post_to_facebook(text, image_url=None, link_url=None):
+    try:
+        if image_url:
+            url = f"https://graph.facebook.com/v19.0/{FACEBOOK_PAGE_ID}/photos"
+            data = {"url": image_url, "caption": text, "access_token": FACEBOOK_PAGE_TOKEN}
+        elif link_url:
+            url = f"https://graph.facebook.com/v19.0/{FACEBOOK_PAGE_ID}/feed"
+            data = {"message": text, "link": link_url, "access_token": FACEBOOK_PAGE_TOKEN}
+        else:
+            url = f"https://graph.facebook.com/v19.0/{FACEBOOK_PAGE_ID}/feed"
+            data = {"message": text, "access_token": FACEBOOK_PAGE_TOKEN}
+        resp = requests.post(url, data=data)
+        result = resp.json()
+        if "id" in result:
+            logger.info("✅ فەیسبووک: پۆست کرا")
+        else:
+            logger.error(f"❌ فەیسبووک: {result}")
+    except Exception as e:
+        logger.error(f"❌ هەڵە: {e}")
+
+async def handle_channel_post(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    message = update.channel_post
+    if not message or message.chat.id != FB_CHANNEL_ID:
+        return
+
+    text = message.text or message.caption or ""
+    image_url = None
+    link_url = None
+
+    # وێنە
+    if message.photo:
+        photo = message.photo[-1]
+        file = await context.bot.get_file(photo.file_id)
+        image_url = file.file_path
+
+    # لینک
+    if message.entities:
+        for entity in message.entities:
+            if entity.type == "url":
+                link_url = text[entity.offset:entity.offset + entity.length]
+                break
+    if message.caption_entities:
+        for entity in message.caption_entities:
+            if entity.type == "url":
+                link_url = text[entity.offset:entity.offset + entity.length]
+                break
+
+    if text or image_url:
+        logger.info(f"📨 پۆستی نوێ بۆ فەیسبووک: {text[:50]}")
+        post_to_facebook(text, image_url, link_url)
+
+def run_fb_sync():
+    async def start():
+        app = Application.builder().token(FB_BOT_TOKEN).build()
+        app.add_handler(MessageHandler(filters.ALL, handle_channel_post))
+        logger.info("🔄 FB Sync Bot دەستی کرد...")
+        await app.run_polling()
+    asyncio.run(start())
 
 async def format_post(article):
     post = f"📰 <b>{article['title_ku']}</b>\n\n"
@@ -105,7 +173,10 @@ async def run_bot():
     scraper = NewsScraper()
     await setup_db()
     logger.info("🤖 Forex Bot started with Deep Analysis and Keep-Alive!")
-    
+
+    fb_thread = threading.Thread(target=run_fb_sync, daemon=True)
+    fb_thread.start()
+
     last_calendar_day = ""
     last_wrap_day = ""
     alerted_events = set()
