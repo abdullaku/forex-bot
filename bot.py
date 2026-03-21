@@ -1,8 +1,6 @@
 import asyncio
 import logging
-import threading
 import requests
-from bs4 import BeautifulSoup
 from telegram import Bot, Update
 from telegram.ext import Application, MessageHandler, filters, ContextTypes
 from sources import NewsScraper
@@ -19,7 +17,6 @@ logger = logging.getLogger(__name__)
 
 BAGHDAD_TZ = timezone(timedelta(hours=3))
 
-# FB Sync
 FB_BOT_TOKEN = "8260987281:AAFMfq_-Qx78HnL6GHHqG_4cgefnPsOn7PA"
 FB_CHANNEL_ID = -1003829360084
 FACEBOOK_PAGE_TOKEN = "EAAUuD0sVsdcBRKUnaULvZBgwVj3jQgWGIV97JWb5S3oVpdmGZB5RnXJLYSYqZCgDdOzJN40pZC3zb3H2wErQA9yx9Rdrk4TN6dYPZBsdGqIFZBHPvNJw2Cm9gYV22ZBwcnYWdZAoI8cPmzbj4EeiYXl4YaHI4aRhZB4EVl8ATMiUYF7jUtYHTO7vuVktbfVNHGZA0fZAfZAHxqF6zMKJyIwFOZBXVpurnr38g2elgUukmKgZDZD"
@@ -49,16 +46,13 @@ async def handle_channel_post(update: Update, context: ContextTypes.DEFAULT_TYPE
     message = update.channel_post
     if not message or message.chat.id != FB_CHANNEL_ID:
         return
-
     text = message.text or message.caption or ""
     image_url = None
     link_url = None
-
     if message.photo:
         photo = message.photo[-1]
         file = await context.bot.get_file(photo.file_id)
         image_url = file.file_path
-
     if message.entities:
         for entity in message.entities:
             if entity.type == "url":
@@ -69,23 +63,18 @@ async def handle_channel_post(update: Update, context: ContextTypes.DEFAULT_TYPE
             if entity.type == "url":
                 link_url = text[entity.offset:entity.offset + entity.length]
                 break
-
     if text or image_url:
         logger.info(f"📨 پۆستی نوێ بۆ فەیسبووک: {text[:50]}")
         post_to_facebook(text, image_url, link_url)
 
-def run_fb_sync():
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    async def start():
-        app = Application.builder().token(FB_BOT_TOKEN).build()
-        app.add_handler(MessageHandler(filters.ALL, handle_channel_post))
-        logger.info("🔄 FB Sync Bot دەستی کرد...")
-        async with app:
-            await app.start()
-            await app.updater.start_polling()
-            await asyncio.Event().wait()
-    loop.run_until_complete(start())
+async def run_fb_sync_async():
+    app = Application.builder().token(FB_BOT_TOKEN).build()
+    app.add_handler(MessageHandler(filters.ALL, handle_channel_post))
+    logger.info("🔄 FB Sync Bot دەستی کرد...")
+    async with app:
+        await app.start()
+        await app.updater.start_polling()
+        await asyncio.Event().wait()
 
 async def format_post(article):
     post = f"📰 <b>{article['title_ku']}</b>\n\n"
@@ -110,31 +99,25 @@ async def check_calendar_alerts(bot, alerted_events, posted_results):
                 if resp.status != 200:
                     return
                 data = await resp.json()
-
         now = datetime.now(BAGHDAD_TZ)
         today = now.strftime('%Y-%m-%d')
-
         for event in data:
             if today not in event.get('date', ''):
                 continue
             if event.get('impact') != 'High':
                 continue
-
             event_id = f"{event.get('date')}_{event.get('title')}_{event.get('currency')}"
             event_time_str = event.get('date', '')
             if 'T' not in event_time_str:
                 continue
-
             event_dt = datetime.fromisoformat(event_time_str.replace('Z', '+00:00'))
             event_dt_baghdad = event_dt.astimezone(BAGHDAD_TZ)
             diff_minutes = (event_dt_baghdad - now).total_seconds() / 60
-
             currency = event.get('currency', '')
             title = event.get('title', '')
             forecast = event.get('forecast', 'نادیارە')
             previous = event.get('previous', 'نادیارە')
             actual = event.get('actual', None)
-
             if actual and event_id not in posted_results:
                 posted_results.add(event_id)
                 try:
@@ -148,7 +131,6 @@ async def check_calendar_alerts(bot, alerted_events, posted_results):
                         result_emoji = "➡️ وەک پێشبینی"
                 except:
                     result_emoji = "📊"
-
                 msg = f"🔴 <b>ئەنجامی هەواڵی گرنگ</b>\n\n"
                 msg += f"🏛 {title} | {currency}\n\n"
                 msg += f"▪️ پێشوو: {previous}\n"
@@ -157,7 +139,6 @@ async def check_calendar_alerts(bot, alerted_events, posted_results):
                 msg += f"{result_emoji}\n\n"
                 msg += f"🕐 {now.strftime('%H:%M | %d/%m/%Y')}"
                 await bot.send_message(chat_id=Config.CHANNEL_ID, text=msg, parse_mode="HTML")
-
             elif not actual and 45 <= diff_minutes <= 75 and event_id not in alerted_events:
                 alerted_events.add(event_id)
                 msg = f"⚠️ <b>ئاگادارکردنەوە — دوای ١ کاتژمێر</b>\n\n"
@@ -167,7 +148,6 @@ async def check_calendar_alerts(bot, alerted_events, posted_results):
                 msg += f"⏰ کات: {event_dt_baghdad.strftime('%H:%M')}\n"
                 msg += f"🕐 {now.strftime('%H:%M | %d/%m/%Y')}"
                 await bot.send_message(chat_id=Config.CHANNEL_ID, text=msg, parse_mode="HTML")
-
     except Exception as e:
         logger.error(f"Calendar alert error: {e}")
 
@@ -177,8 +157,7 @@ async def run_bot():
     await setup_db()
     logger.info("🤖 Forex Bot started with Deep Analysis and Keep-Alive!")
 
-    fb_thread = threading.Thread(target=run_fb_sync, daemon=True)
-    fb_thread.start()
+    asyncio.create_task(run_fb_sync_async())
 
     last_calendar_day = ""
     last_wrap_day = ""
@@ -190,16 +169,13 @@ async def run_bot():
             now = datetime.now(BAGHDAD_TZ)
             current_hour = now.hour
             current_day = now.strftime("%Y-%m-%d")
-
             if current_hour == 9 and last_calendar_day != current_day:
                 calendar_events = await scraper.fetch_calendar()
                 if calendar_events:
                     msg = "\n".join(calendar_events)
                     await bot.send_message(chat_id=Config.CHANNEL_ID, text=msg, parse_mode="HTML")
                     last_calendar_day = current_day
-
             await check_calendar_alerts(bot, alerted_events, posted_results)
-
             if current_hour == 23 and last_wrap_day != current_day:
                 todays_articles = await get_todays_news()
                 if todays_articles:
@@ -207,7 +183,6 @@ async def run_bot():
                     await bot.send_message(chat_id=Config.CHANNEL_ID, text=analysis_text, parse_mode="HTML")
                     last_wrap_day = current_day
                     logger.info("✅ Deep Analysis posted.")
-
             articles = await scraper.fetch_all()
             for article in articles:
                 clean_url = article['url'].split('?')[0].split('#')[0]
@@ -226,7 +201,6 @@ async def run_bot():
                             await bot.send_message(chat_id=Config.CHANNEL_ID, text=text, parse_mode="HTML", disable_web_page_preview=True)
                         await save_news(article)
                         await asyncio.sleep(Config.POST_DELAY_SECONDS)
-
             await asyncio.sleep(Config.CHECK_INTERVAL_SECONDS)
         except Exception as e:
             logger.error(f"Error: {e}")
