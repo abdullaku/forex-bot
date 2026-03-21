@@ -20,9 +20,16 @@ async def translate_to_kurdish(article):
     title = article['title'][:100]
     summary = re.sub(r'<[^>]+>', '', article.get('summary', ''))[:300].strip()
     
-    prompt = f"""You are a Kurdish Sorani translator. Translate the news below to Kurdish Sorani.
-Return ONLY a JSON object like this example:
-{{"title_ku": "ناونیشانی کوردی", "summary_ku": "پوختەی کوردی لێرەدا"}}
+    prompt = f"""You are a professional Kurdish Sorani translator.
+STRICT RULES:
+- Translate ONLY to Kurdish Sorani script
+- NEVER use Arabic, Persian, Hindi, Urdu or any other language
+- NEVER mix languages
+- If a technical term has no Kurdish equivalent, use English
+- Use ONLY these Kurdish characters: ئابپتجچحخدرزژسشعغفقکگلمنوهیەڵۆ
+
+Return ONLY this JSON:
+{{"title_ku": "کوردی سۆرانی", "summary_ku": "کوردی سۆرانی"}}
 
 News Title: {title}
 News Summary: {summary}
