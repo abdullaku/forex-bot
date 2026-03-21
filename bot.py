@@ -54,13 +54,11 @@ async def handle_channel_post(update: Update, context: ContextTypes.DEFAULT_TYPE
     image_url = None
     link_url = None
 
-    # وێنە
     if message.photo:
         photo = message.photo[-1]
         file = await context.bot.get_file(photo.file_id)
         image_url = file.file_path
 
-    # لینک
     if message.entities:
         for entity in message.entities:
             if entity.type == "url":
@@ -77,12 +75,17 @@ async def handle_channel_post(update: Update, context: ContextTypes.DEFAULT_TYPE
         post_to_facebook(text, image_url, link_url)
 
 def run_fb_sync():
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
     async def start():
         app = Application.builder().token(FB_BOT_TOKEN).build()
         app.add_handler(MessageHandler(filters.ALL, handle_channel_post))
         logger.info("🔄 FB Sync Bot دەستی کرد...")
-        await app.run_polling()
-    asyncio.run(start())
+        async with app:
+            await app.start()
+            await app.updater.start_polling()
+            await asyncio.Event().wait()
+    loop.run_until_complete(start())
 
 async def format_post(article):
     post = f"📰 <b>{article['title_ku']}</b>\n\n"
