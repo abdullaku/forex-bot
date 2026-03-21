@@ -24,12 +24,12 @@ FACEBOOK_PAGE_ID = "994664793738553"
 
 def post_to_facebook(text, image_url=None, link_url=None):
     import re
-    # پێش سڕینەوەی HTML — لینک لە href دەربهێنە
     if not link_url:
         href_match = re.search(r"href=['\"]([^'\"]+)['\"]", text)
         if href_match:
             link_url = href_match.group(1)
     clean_text = re.sub(r'<[^>]+>', '', text)
+    clean_text = re.sub(r'🔗.*\n?', '', clean_text).strip()
     if not link_url:
         urls = re.findall(r'https?://\S+', clean_text)
         if urls:
@@ -37,7 +37,10 @@ def post_to_facebook(text, image_url=None, link_url=None):
     try:
         if image_url:
             url = f"https://graph.facebook.com/v19.0/{FACEBOOK_PAGE_ID}/photos"
-            data = {"url": image_url, "caption": clean_text, "access_token": FACEBOOK_PAGE_TOKEN}
+            caption = clean_text
+            if link_url:
+                caption += f"\n\n{link_url}"
+            data = {"url": image_url, "caption": caption, "access_token": FACEBOOK_PAGE_TOKEN}
         elif link_url:
             url = f"https://graph.facebook.com/v19.0/{FACEBOOK_PAGE_ID}/feed"
             data = {"message": clean_text, "link": link_url, "access_token": FACEBOOK_PAGE_TOKEN}
