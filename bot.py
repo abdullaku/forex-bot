@@ -64,7 +64,6 @@ async def check_calendar_alerts(bot, alerted_events, posted_results):
             previous = event.get('previous', 'نادیارە')
             actual = event.get('actual', None)
 
-            # مەرحەلەی ٣ — ئەنجامی ڕاستەقینە
             if actual and event_id not in posted_results:
                 posted_results.add(event_id)
                 try:
@@ -88,7 +87,6 @@ async def check_calendar_alerts(bot, alerted_events, posted_results):
                 msg += f"🕐 {now.strftime('%H:%M | %d/%m/%Y')}"
                 await bot.send_message(chat_id=Config.CHANNEL_ID, text=msg, parse_mode="HTML")
 
-            # مەرحەلەی ٢ — ئاگادارکردنەوە ١ کاتژمێر پێش
             elif not actual and 45 <= diff_minutes <= 75 and event_id not in alerted_events:
                 alerted_events.add(event_id)
                 msg = f"⚠️ <b>ئاگادارکردنەوە — دوای ١ کاتژمێر</b>\n\n"
@@ -122,7 +120,7 @@ async def run_bot():
             if current_hour == 9 and last_calendar_day != current_day:
                 calendar_events = await scraper.fetch_calendar()
                 if calendar_events:
-                    msg = "📅 <b>گرنگترین هەواڵە ئابوورییەکانی ئەمڕۆ:</b>\n\n" + "\n".join(calendar_events)
+                    msg = "\n".join(calendar_events)
                     await bot.send_message(chat_id=Config.CHANNEL_ID, text=msg, parse_mode="HTML")
                     last_calendar_day = current_day
 
