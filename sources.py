@@ -22,6 +22,13 @@ class NewsScraper:
     FOREX_KEYWORDS = ["forex", "currency", "dollar", "euro", "pound", "yen", "gold", "oil", "inflation", "fed", "cpi", "market"]
 
     async def fetch_calendar(self):
+        BAGHDAD_TZ = timezone(timedelta(hours=3))
+        now = datetime.now(BAGHDAD_TZ)
+
+        # شەممە (5) و یەکشەممە (6) بازاڕ داخراوە
+        if now.weekday() in [5, 6]:
+            return []
+
         high_events = []
         medium_events = []
         try:
@@ -30,8 +37,7 @@ class NewsScraper:
                 async with session.get(url) as resp:
                     if resp.status == 200:
                         data = await resp.json()
-                        BAGHDAD_TZ = timezone(timedelta(hours=3))
-                        today = datetime.now(BAGHDAD_TZ).strftime('%Y-%m-%d')
+                        today = now.strftime('%Y-%m-%d')
 
                         CURRENCY_FLAGS = {
                             "USD": "🇺🇸", "EUR": "🇪🇺", "GBP": "🇬🇧",
@@ -44,7 +50,10 @@ class NewsScraper:
                             "CPI": "نرخی بەرزی ژیان", "GDP": "بەرهەمی ناوخۆ",
                             "NFP": "کارمەندی نوێ", "Retail Sales": "فرۆشتنی لق",
                             "Interest Rate": "ڕێژەی سوود", "Unemployment": "بێکاری",
-                            "PPI": "نرخی بەرهەمهێنان", "PMI": "پێوەری چالاکی"
+                            "PPI": "نرخی بەرهەمهێنان", "PMI": "پێوەری چالاکی",
+                            "Fed Chair Powell Speaks": "قسەکردنی سەرۆکی فێد پاوەل",
+                            "Powell Speaks": "پاوەل قسە دەکات",
+                            "FOMC": "کۆمیتەی فێد"
                         }
 
                         for event in data:
@@ -70,43 +79,36 @@ class NewsScraper:
                             else:
                                 time = ''
 
-                            line = f"{flag} {time} | {title}"
-                            if forecast:
-                                line += f"\n▪️ پێشبینی: {forecast}"
-                            if previous:
-                                line += f"\n▪️ پێشوو: {previous}"
+                            impact_emoji = "🔴" if impact == 'High' else "🟡"
+                            line = f"{flag} {time} › {title}"
+                            if forecast or previous:
+                                line += f"\n📊 پێشبینی {forecast} | پێشوو {previous}"
 
                             if impact == 'High':
-                                high_events.append(line)
+                                high_events.append((impact_emoji, line))
                             else:
-                                medium_events.append(line)
+                                medium_events.append((impact_emoji, line))
 
         except Exception as e:
             logger.error(f"Error fetching calendar: {e}")
 
-        # دروستکردنی پۆستی نوێ
-        BAGHDAD_TZ = timezone(timedelta(hours=3))
-        now = datetime.now(BAGHDAD_TZ)
-        day_names = {0: "دووشەممە", 1: "سێشەممە", 2: "چوارشەممە", 3: "پێنجشەممە", 4: "هەینی", 5: "شەممە", 6: "یەکشەممە"}
-        day_name = day_names[now.weekday()]
-        date_str = now.strftime('%d/%m/%Y')
+        if not high_events and not medium_events:
+            return []
 
-        result = [f"📅 ڕۆژمێری ئابووری | {day_name} {date_str}\n"]
-        result.append("━━━━━━━━━━━━━━━━━━━━")
+        date_str = now.strftime('%d/%m/%Y')
+        result = [f"ڕۆژمێری ئابووری\n🗓 ئەمڕۆ | {date_str}\n"]
 
         if high_events:
-            result.append("🔥 هەواڵی گرنگ")
-            result.append("━━━━━━━━━━━━━━━━━━━━")
-            result.extend(high_events)
+            result.append("🔴 گرنگ")
+            for _, line in high_events:
+                result.append(line)
 
         if medium_events:
-            result.append("\n━━━━━━━━━━━━━━━━━━━━")
-            result.append("⚠️ هەواڵی مامناوەند")
-            result.append("━━━━━━━━━━━━━━━━━━━━")
-            result.extend(medium_events)
+            result.append("\n🟡 مامناوەند")
+            for _, line in medium_events:
+                result.append(line)
 
-        result.append("\n━━━━━━━━━━━━━━━━━━━━")
-        result.append("📊 @KurdTraderKRD")
+        result.append("\n🔔 @KurdTraderKRD")
 
         return result
 
