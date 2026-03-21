@@ -24,6 +24,11 @@ FACEBOOK_PAGE_ID = "994664793738553"
 
 def post_to_facebook(text, image_url=None, link_url=None):
     import re
+    # پێش سڕینەوەی HTML — لینک لە href دەربهێنە
+    if not link_url:
+        href_match = re.search(r"href=['\"]([^'\"]+)['\"]", text)
+        if href_match:
+            link_url = href_match.group(1)
     clean_text = re.sub(r'<[^>]+>', '', text)
     if not link_url:
         urls = re.findall(r'https?://\S+', clean_text)
@@ -64,10 +69,16 @@ async def handle_channel_post(update: Update, context: ContextTypes.DEFAULT_TYPE
             if entity.type == "url":
                 link_url = text[entity.offset:entity.offset + entity.length]
                 break
+            elif entity.type == "text_link":
+                link_url = entity.url
+                break
     if message.caption_entities:
         for entity in message.caption_entities:
             if entity.type == "url":
                 link_url = text[entity.offset:entity.offset + entity.length]
+                break
+            elif entity.type == "text_link":
+                link_url = entity.url
                 break
     if text or image_url:
         logger.info(f"📨 پۆستی نوێ بۆ فەیسبووک: {text[:50]}")
@@ -211,4 +222,3 @@ async def run_bot():
 
 if __name__ == "__main__":
     asyncio.run(run_bot())
-            
