@@ -23,16 +23,22 @@ FACEBOOK_PAGE_TOKEN = "EAAUuD0sVsdcBRBLiIFF8Pts6QoDsvvBJqVQxknagY6lKuqvD1AOzIypD
 FACEBOOK_PAGE_ID = "994664793738553"
 
 def post_to_facebook(text, image_url=None, link_url=None):
+    import re
+    clean_text = re.sub(r'<[^>]+>', '', text)
+    if not link_url:
+        urls = re.findall(r'https?://\S+', clean_text)
+        if urls:
+            link_url = urls[0]
     try:
         if image_url:
             url = f"https://graph.facebook.com/v19.0/{FACEBOOK_PAGE_ID}/photos"
-            data = {"url": image_url, "caption": text, "access_token": FACEBOOK_PAGE_TOKEN}
+            data = {"url": image_url, "caption": clean_text, "access_token": FACEBOOK_PAGE_TOKEN}
         elif link_url:
             url = f"https://graph.facebook.com/v19.0/{FACEBOOK_PAGE_ID}/feed"
-            data = {"message": text, "link": link_url, "access_token": FACEBOOK_PAGE_TOKEN}
+            data = {"message": clean_text, "link": link_url, "access_token": FACEBOOK_PAGE_TOKEN}
         else:
             url = f"https://graph.facebook.com/v19.0/{FACEBOOK_PAGE_ID}/feed"
-            data = {"message": text, "access_token": FACEBOOK_PAGE_TOKEN}
+            data = {"message": clean_text, "access_token": FACEBOOK_PAGE_TOKEN}
         resp = requests.post(url, data=data)
         result = resp.json()
         if "id" in result:
@@ -156,14 +162,11 @@ async def run_bot():
     scraper = NewsScraper()
     await setup_db()
     logger.info("🤖 Forex Bot started with Deep Analysis and Keep-Alive!")
-
     asyncio.create_task(run_fb_sync_async())
-
     last_calendar_day = ""
     last_wrap_day = ""
     alerted_events = set()
     posted_results = set()
-
     while True:
         try:
             now = datetime.now(BAGHDAD_TZ)
