@@ -37,8 +37,7 @@ async def process_smart_news(english_title):
             
             # هەنگاوی دووەم: Gemini بۆ وەرگێڕانی کوردییەکی پڕۆفیشناڵ
             model = genai.GenerativeModel('gemini-1.5-flash')
-            # لێرە پێمان وتووە کە هەواڵەکە داراییە (نەک تەنها بلومبێرگ)
-            translation_prompt = f"Translate this financial news title to professional Kurdish Sorani for a Forex channel. Keep it concise: {english_title}"
+            translation_prompt = f"Translate this financial news title to professional Kurdish Sorani for a Forex channel. Keep it short and catchy: {english_title}"
             
             response = model.generate_content(translation_prompt)
             return response.text.strip()
@@ -49,5 +48,23 @@ async def process_smart_news(english_title):
 
     except Exception as e:
         print(f"❌ Error in Smart Processor: {e}")
+        return None
+
+async def generate_daily_analysis(news_list):
+    """
+    ئەم فەنکشنە بۆ دروستکردنی شیکاری ڕۆژانەیە کاتێک bot.py داوای دەکات.
+    """
+    try:
+        if not news_list:
+            return None
+            
+        model = genai.GenerativeModel('gemini-1.5-flash')
+        prompt = f"Summarize these forex news into a brief daily market sentiment in Kurdish Sorani. Make it professional: {news_list}"
+        
+        response = model.generate_content(prompt)
+        return response.text.strip()
+        
+    except Exception as e:
+        print(f"❌ Error in Daily Analysis: {e}")
         return None
         
