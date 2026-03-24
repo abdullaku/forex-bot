@@ -4,7 +4,8 @@ import requests
 from telegram import Bot, Update
 from telegram.ext import Application, MessageHandler, filters, ContextTypes
 from sources import NewsScraper
-from translator import translate_to_kurdish, generate_daily_analysis
+# گۆڕینی ئەم بەشە بۆ بەکارهێنانی وەرگێڕە زیرەکەکە
+from translator import process_smart_news, generate_daily_analysis
 from config import Config
 from database import setup_db, is_posted, mark_posted, save_news, get_todays_news
 from datetime import datetime, timezone, timedelta
@@ -96,19 +97,13 @@ async def run_fb_sync_async():
         await app.updater.start_polling()
         await asyncio.Event().wait()
 
-async def format_post(article):
-    post = f"📰 <b>{article['title_ku']}</b>\n\n"
-    post += f"{article['summary_ku']}\n\n"
-    source_label = "🇮🇶 هەواڵی ناوەخۆ | Iraq Business News" if article['source'] == "Iraq Business News" else article['source']
-    post += f"📌 {source_label}\n"
-    post += f"🔗 <a href='{article['url']}'>بینە هەواڵەکە لە سەرچاوە</a>\n"
+async def format_post(kurdish_text, article_url):
+    # داڕشتنەوەی شێوازی پۆستەکە بە زمانی کوردی
+    post = f"📢 <b>هەواڵی ئابووری و فۆرێکس</b>\n\n"
+    post += f"{kurdish_text}\n\n"
+    post += f"🔗 <a href='{article_url}'>سەرچاوەی هەواڵ</a>\n"
     post += f"🕐 {datetime.now(BAGHDAD_TZ).strftime('%H:%M | %d/%m/%Y')}"
     return post
-
-def is_kurdish(text):
-    kurdish_chars = set('ابتثجحخدذرزسشصضطظعغفقكلمنهوي\u06a9\u06af\u06c1\u06be\u0698\u0686\u06cc\u06d5\u06c6\u06c7\u06c8\u06cb\u06cf\u06b5\u06b1\u0695\u067e\u062c\u06a4')
-    count = sum(1 for c in text if c in kurdish_chars)
-    return count > len(text) * 0.2
 
 async def check_calendar_alerts(bot, alerted_events, posted_results):
     try:
@@ -175,7 +170,7 @@ async def run_bot():
     bot = Bot(token=Config.BOT_TOKEN)
     scraper = NewsScraper()
     await setup_db()
-    logger.info("🤖 Forex Bot started with Deep Analysis and Keep-Alive!")
+    logger.info("🤖 Smart Forex Bot started with Groq & Gemini!")
     asyncio.create_task(run_fb_sync_async())
     last_calendar_day = ""
     last_wrap_day = ""
@@ -186,29 +181,37 @@ async def run_bot():
             now = datetime.now(BAGHDAD_TZ)
             current_hour = now.hour
             current_day = now.strftime("%Y-%m-%d")
+            
+            # ڕۆژنامەی بەیانیان
             if current_hour == 9 and last_calendar_day != current_day:
                 calendar_events = await scraper.fetch_calendar()
                 if calendar_events:
                     msg = "\n".join(calendar_events)
                     await bot.send_message(chat_id=Config.CHANNEL_ID, text=msg, parse_mode="HTML")
                     last_calendar_day = current_day
+            
             await check_calendar_alerts(bot, alerted_events, posted_results)
+            
+            # شیکاری کۆتایی ڕۆژ
             if current_hour == 23 and last_wrap_day != current_day:
                 todays_articles = await get_todays_news()
                 if todays_articles:
                     analysis_text = await generate_daily_analysis(todays_articles)
                     await bot.send_message(chat_id=Config.CHANNEL_ID, text=analysis_text, parse_mode="HTML")
                     last_wrap_day = current_day
-                    logger.info("✅ Deep Analysis posted.")
+            
+            # پشکنینی هەواڵە نوێیەکان بە شێوازی ژیری دەستکرد
             articles = await scraper.fetch_all()
             for article in articles:
                 clean_url = article['url'].split('?')[0].split('#')[0]
                 if not await is_posted(clean_url):
-                    await mark_posted(clean_url)
-                    article['url'] = clean_url
-                    article = await translate_to_kurdish(article)
-                    if article.get('title_ku') and is_kurdish(article['title_ku']):
-                        text = await format_post(article)
+                    # پشکنین و وەرگێڕان بە یەکجار لە ڕێگەی Groq و Gemini
+                    kurdish_text = await process_smart_news(article['title'])
+                    
+                    if kurdish_text:
+                        await mark_posted(clean_url)
+                        text = await format_post(kurdish_text, clean_url)
+                        
                         try:
                             if article.get('image_url'):
                                 await bot.send_photo(chat_id=Config.CHANNEL_ID, photo=article['image_url'], caption=text, parse_mode="HTML")
@@ -216,8 +219,15 @@ async def run_bot():
                                 await bot.send_message(chat_id=Config.CHANNEL_ID, text=text, parse_mode="HTML", disable_web_page_preview=True)
                         except:
                             await bot.send_message(chat_id=Config.CHANNEL_ID, text=text, parse_mode="HTML", disable_web_page_preview=True)
+                        
+                        # سەیڤکردنی هەواڵە وەرگێڕدراوەکە بۆ شیکاری کۆتایی ڕۆژ
+                        article['title_ku'] = kurdish_text
                         await save_news(article)
                         await asyncio.sleep(Config.POST_DELAY_SECONDS)
+                    else:
+                        # ئەگەر هەواڵەکە گرنگ نەبوو، تەنها وەک بڵاوکراوە نیشانی دەدەین تا دووبارە پشکنینی بۆ نەکرێتەوە
+                        await mark_posted(clean_url)
+            
             await asyncio.sleep(Config.CHECK_INTERVAL_SECONDS)
         except Exception as e:
             logger.error(f"Error: {e}")
@@ -225,3 +235,4 @@ async def run_bot():
 
 if __name__ == "__main__":
     asyncio.run(run_bot())
+                                                     
