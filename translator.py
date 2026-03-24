@@ -2,7 +2,7 @@ import os
 import google.generativeai as genai
 from groq import Groq
 
-# ١. ڕێکخستنی کلیلەکان (دڵنیابە لە Render ئەم ناوانەت داناوە)
+# ١. ڕێکخستنی کلیلەکان لە Render
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 
@@ -12,13 +12,12 @@ genai.configure(api_key=GEMINI_API_KEY)
 
 async def process_smart_news(english_title):
     """
-    ئەم فەنکشنە یەکەمجار بە Groq هەواڵەکە دەپشکنێت، 
-    ئەگەر گرنگ بوو، ئینجا بە Gemini وەری دەگێڕێت.
+    ئەم فەنکشنە هەواڵ لە هەموو سەرچاوەکان وەردەگرێت، هەڵسەنگاندنی بۆ دەکات
+    و ئەگەر گرنگ بوو بە Gemini وەری دەگێڕێت.
     """
     try:
-        # هەنگاوی یەکەم: Groq (خێرا و خۆڕایی) بۆ هەڵسەنگاندن
-        # لێرە مۆدێلی llama3-8b بەکاردێنین چونکە زۆر خێرایە
-        rating_prompt = f"Rate the importance of this Bloomberg news for Forex/Gold from 1 to 10. Reply ONLY with the number: {english_title}"
+        # هەنگاوی یەکەم: Groq بۆ هەڵسەنگاندنی هەموو جۆرە هەواڵێکی ئابووری
+        rating_prompt = f"Rate the importance of this financial news for Forex, Gold, and Global Markets from 1 to 10. Reply ONLY with the number: {english_title}"
         
         chat_completion = groq_client.chat.completions.create(
             messages=[{"role": "user", "content": rating_prompt}],
@@ -27,7 +26,7 @@ async def process_smart_news(english_title):
         
         rating_str = chat_completion.choices[0].message.content.strip()
         
-        # پشکنینی نمرەکە (تەنها ٧ و بەرەو سەر)
+        # دەرهێنانی تەنها ژمارەکە لە وەڵامەکەدا
         try:
             rating = int(''.join(filter(str.isdigit, rating_str)))
         except:
@@ -36,9 +35,10 @@ async def process_smart_news(english_title):
         if rating >= 7:
             print(f"🔥 Important News (Rating: {rating}): {english_title}")
             
-            # هەنگاوی دووەم: Gemini (زیرەک و خۆڕایی) بۆ وەرگێڕانی کوردی
+            # هەنگاوی دووەم: Gemini بۆ وەرگێڕانی کوردییەکی پڕۆفیشناڵ
             model = genai.GenerativeModel('gemini-1.5-flash')
-            translation_prompt = f"Translate this Bloomberg Forex news to professional Kurdish Sorani. Make it short and catchy for Telegram: {english_title}"
+            # لێرە پێمان وتووە کە هەواڵەکە داراییە (نەک تەنها بلومبێرگ)
+            translation_prompt = f"Translate this financial news title to professional Kurdish Sorani for a Forex channel. Keep it concise: {english_title}"
             
             response = model.generate_content(translation_prompt)
             return response.text.strip()
