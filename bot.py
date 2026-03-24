@@ -4,7 +4,6 @@ import requests
 from telegram import Bot, Update
 from telegram.ext import Application, MessageHandler, filters, ContextTypes
 from sources import NewsScraper
-# گۆڕینی ئەم بەشە بۆ بەکارهێنانی وەرگێڕە زیرەکەکە
 from translator import process_smart_news, generate_daily_analysis
 from config import Config
 from database import setup_db, is_posted, mark_posted, save_news, get_todays_news
@@ -98,7 +97,6 @@ async def run_fb_sync_async():
         await asyncio.Event().wait()
 
 async def format_post(kurdish_text, article_url):
-    # داڕشتنەوەی شێوازی پۆستەکە بە زمانی کوردی
     post = f"📢 <b>هەواڵی ئابووری و فۆرێکس</b>\n\n"
     post += f"{kurdish_text}\n\n"
     post += f"🔗 <a href='{article_url}'>سەرچاوەی هەواڵ</a>\n"
@@ -181,58 +179,68 @@ async def run_bot():
             now = datetime.now(BAGHDAD_TZ)
             current_hour = now.hour
             current_day = now.strftime("%Y-%m-%d")
-            
+
             # ڕۆژنامەی بەیانیان
             if current_hour == 9 and last_calendar_day != current_day:
-                calendar_events = await scraper.fetch_calendar()
-                if calendar_events:
-                    msg = "\n".join(calendar_events)
-                    await bot.send_message(chat_id=Config.CHANNEL_ID, text=msg, parse_mode="HTML")
+                try:
+                    calendar_events = await scraper.fetch_calendar()
+                    if calendar_events:
+                        msg = "\n".join(calendar_events)
+                        await bot.send_message(chat_id=Config.CHANNEL_ID, text=msg, parse_mode="HTML")
                     last_calendar_day = current_day
-            
-            await check_calendar_alerts(bot, alerted_events, posted_results)
-            
+                except Exception as e:
+                    logger.error(f"Calendar fetch error: {e}")
+
+            # ئاگادارکردنەوەی کارێکی ئابووری
+            try:
+                await check_calendar_alerts(bot, alerted_events, posted_results)
+            except Exception as e:
+                logger.error(f"Calendar alert error: {e}")
+
             # شیکاری کۆتایی ڕۆژ
-            if current_hour == 23 and last_wrap_day != current_day:
-                todays_articles = await get_todays_news()
-                if todays_articles:
-                    analysis_text = await generate_daily_analysis(todays_articles)
-                    await bot.send_message(chat_id=Config.CHANNEL_ID, text=analysis_text, parse_mode="HTML")
+            if current_hour >= 22 and last_wrap_day != current_day:
+                try:
+                    todays_articles = await get_todays_news()
+                    if todays_articles:
+                        analysis_text = await generate_daily_analysis(todays_articles)
+                        if analysis_text:
+                            await bot.send_message(chat_id=Config.CHANNEL_ID, text=analysis_text, parse_mode="HTML")
                     last_wrap_day = current_day
-            
-            # پشکنینی هەواڵە نوێیەکان بە شێوازی ژیری دەستکرد
-            articles = await scraper.fetch_all()
-            for article in articles:
-                clean_url = article['url'].split('?')[0].split('#')[0]
-                if not await is_posted(clean_url):
-                    # پشکنین و وەرگێڕان بە یەکجار لە ڕێگەی Groq و Gemini
-                    kurdish_text = await process_smart_news(article['title'])
-                    
-                    if kurdish_text:
-                        await mark_posted(clean_url)
-                        text = await format_post(kurdish_text, clean_url)
-                        
-                        try:
-                            if article.get('image_url'):
-                                await bot.send_photo(chat_id=Config.CHANNEL_ID, photo=article['image_url'], caption=text, parse_mode="HTML")
-                            else:
+                except Exception as e:
+                    logger.error(f"Daily wrap error: {e}")
+
+            # پشکنینی هەواڵە نوێیەکان
+            try:
+                articles = await scraper.fetch_all()
+                for article in articles:
+                    clean_url = article['url'].split('?')[0].split('#')[0]
+                    if not await is_posted(clean_url):
+                        kurdish_text = await process_smart_news(article['title'])
+                        if kurdish_text:
+                            await mark_posted(clean_url)
+                            text = await format_post(kurdish_text, clean_url)
+                            try:
+                                if article.get('image_url'):
+                                    await bot.send_photo(chat_id=Config.CHANNEL_ID, photo=article['image_url'], caption=text, parse_mode="HTML")
+                                else:
+                                    await bot.send_message(chat_id=Config.CHANNEL_ID, text=text, parse_mode="HTML", disable_web_page_preview=True)
+                            except Exception as e:
+                                logger.error(f"Send error: {e}")
                                 await bot.send_message(chat_id=Config.CHANNEL_ID, text=text, parse_mode="HTML", disable_web_page_preview=True)
-                        except:
-                            await bot.send_message(chat_id=Config.CHANNEL_ID, text=text, parse_mode="HTML", disable_web_page_preview=True)
-                        
-                        # سەیڤکردنی هەواڵە وەرگێڕدراوەکە بۆ شیکاری کۆتایی ڕۆژ
-                        article['title_ku'] = kurdish_text
-                        await save_news(article)
-                        await asyncio.sleep(Config.POST_DELAY_SECONDS)
-                    else:
-                        # ئەگەر هەواڵەکە گرنگ نەبوو، تەنها وەک بڵاوکراوە نیشانی دەدەین تا دووبارە پشکنینی بۆ نەکرێتەوە
-                        await mark_posted(clean_url)
-            
+                            article['title_ku'] = kurdish_text
+                            await save_news(article)
+                            await asyncio.sleep(Config.POST_DELAY_SECONDS)
+                        else:
+                            await mark_posted(clean_url)
+            except Exception as e:
+                logger.error(f"News fetch error: {e}")
+
             await asyncio.sleep(Config.CHECK_INTERVAL_SECONDS)
+
         except Exception as e:
-            logger.error(f"Error: {e}")
+            logger.error(f"Main loop error: {e}")
             await asyncio.sleep(60)
 
 if __name__ == "__main__":
     asyncio.run(run_bot())
-                                                     
+    
