@@ -1,77 +1,50 @@
 import os
-import re
-import google.generativeai as genai
-from groq import Groq
+import groq # بۆ هەڵسەنگاندن
+import google.generativeai as genai # بۆ وەرگێڕان
 
+# ڕێکخستنی کلیلەکان (دڵنیابە لە Render دانراون)
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 
-groq_client = Groq(api_key=GROQ_API_KEY)
+client_groq = groq.Groq(api_key=GROQ_API_KEY)
 genai.configure(api_key=GEMINI_API_KEY)
+gemini_model = genai.GenerativeModel('gemini-1.5-flash')
 
-def clean_text(text):
-    """پاککردنەوەی دەق - تەنها کارەکتەرە زیانبەخشەکان دەسڕێتەوە"""
-    if not text:
-        return ""
-    # تەنها null bytes و کارەکتەرە کۆنترۆڵەکان دەسڕێتەوە، کوردی/عەرەبی دەمێنێتەوە
-    cleaned = text.replace('\x00', '').strip()
-    cleaned = re.sub(r'[\x01-\x08\x0b\x0c\x0e-\x1f\x7f]', '', cleaned)
-    cleaned = cleaned[:700]
-    if len(cleaned) < 5:
-        return ""
-    return cleaned
-
-async def process_smart_news(english_title):
+def evaluate_news(text):
+    """هەڵسەنگاندنی هەواڵەکە لە ڕێگەی Groq و لابردنی هەموو سانسۆرەکان"""
     try:
-        safe_title = clean_text(english_title)
-
-        if not safe_title:
-            return None
-
-        # هەنگاوی یەکەم: Groq بۆ هەڵسەنگاندن
-        rating_prompt = f"Rate the importance of this financial news (1-10). Reply ONLY with the number: {safe_title}"
-
-        try:
-            chat_completion = groq_client.chat.completions.create(
-                messages=[{"role": "user", "content": rating_prompt}],
-                model="llama3-8b-8192",
-                timeout=10
-            )
-            rating_str = chat_completion.choices[0].message.content.strip()
-            rating = int(''.join(filter(str.isdigit, rating_str[:5])))
-        except Exception as groq_err:
-            print(f"⚠️ Groq Error, using default rating 7: {groq_err}")
-            rating = 7
-
-        if rating >= 7:
-            print(f"🔥 Processing News (Rating: {rating}): {safe_title}")
-
-            # هەنگاوی دووەم: Gemini بۆ وەرگێڕان
-            model = genai.GenerativeModel('gemini-1.5-flash')
-            translation_prompt = f"Translate this financial news to professional Kurdish Sorani for a Forex channel: {safe_title}"
-
-            response = model.generate_content(translation_prompt)
-            return response.text.strip()
-
-        else:
-            print(f"❄️ Skipping (Rating: {rating}): {safe_title}")
-            return None
-
+        prompt = f"""
+        Analyze this news and give it a score from 0 to 10 based on its importance to Forex and Economy.
+        Respond ONLY with the number.
+        News: {text[:1000]}
+        """
+        response = client_groq.chat.completions.create(
+            model="mixtral-8x7b-32768",
+            messages=[{"role": "user", "content": prompt}]
+        )
+        score = response.choices[0].message.content.strip()
+        return float(''.join(filter(str.isdigit, score)) or 0)
     except Exception as e:
-        print(f"❌ Critical Error in Smart Processor: {e}")
+        print(f"Groq Error: {e}")
+        return 0
+
+def translate_to_kurdish(text):
+    """وەرگێڕانی هەواڵەکە لە ڕێگەی Gemini"""
+    try:
+        prompt = f"Translate this financial news into professional Sorani Kurdish: {text}"
+        response = gemini_model.generate_content(prompt)
+        return response.text
+    except Exception as e:
+        print(f"Gemini Error: {e}")
         return None
 
-async def generate_daily_analysis(news_list):
-    try:
-        if not news_list:
-            return None
-
-        model = genai.GenerativeModel('gemini-1.5-flash')
-        prompt = f"Summarize these forex news into a brief daily market sentiment in Kurdish Sorani. Make it professional: {news_list}"
-
-        response = model.generate_content(prompt)
-        return response.text.strip()
-
-    except Exception as e:
-        print(f"❌ Error in Daily Analysis: {e}")
-        return None
+def process_news(news_text):
+    # هەنگاوی ١: هەڵسەنگاندن بە Groq (بێ سانسۆر)
+    score = evaluate_news(news_text)
+    
+    # هەنگاوی ٢: ئەگەر هەواڵەکە گرنگ بوو (بۆ نموونە سەروو ٥) بینێرە بۆ وەرگێڕان
+    if score >= 5: # دەتوانی ئەم نمرەیە بە کەیفی خۆت بگۆڕیت
+        kurdish_text = translate_to_kurdish(news_text)
+        return kurdish_text, score
+    
+    return None, score
