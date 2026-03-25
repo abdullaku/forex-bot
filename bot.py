@@ -1,8 +1,8 @@
 import asyncio
 import logging
 import requests
-import threading  # بۆ ئەوەی سێرڤەر و بۆتەکە پێکەوە کار بکەن
-import time       # بۆ دیاریکردنی کاتی نێوان پینگ کردنەکان
+import threading
+import time
 from telegram import Bot, Update
 from telegram.ext import Application, MessageHandler, filters, ContextTypes
 from sources import NewsScraper
@@ -11,24 +11,21 @@ from config import Config
 from database import setup_db, is_posted, mark_posted, save_news, get_todays_news
 from datetime import datetime, timezone, timedelta
 
-# --- تەنها ئەم بەشە زیاد کراوە بۆ چارەسەری خەوتنی سێرڤەر ---
+# --- بەشی نوێکراوە بۆ چارەسەری کارنەکردنی سکانەر و خەوتنی سێرڤەر ---
 from keep_alive import keep_alive
 
-def run_keep_alive():
-    # دەستپێکردنی سێرڤەرە کورتەکە
-    keep_alive()
-    # دروستکردنی ئەڵقەیەک بۆ ئەوەی سێرڤەرەکە بە خەبەر بمێنێتەوە
+def start_pinging():
+    """ئەم بەشە سێرڤەرەکە بە خەبەر دەهێڵێتەوە بێ ئەوەی بۆتەکە بوەستێنێت"""
+    time.sleep(15) # چاوەڕێ دەکات تا سێرڤەرەکە بە تەواوی جێگیر دەبێت
     while True:
         try:
-            # بۆتەکە لێرەدا خۆی بانگی خۆی دەکاتەوە
-            requests.get("https://forex-bot-dq8f.onrender.com", timeout=10)
-            logging.info("♻️ Self-ping: Server is awake!")
-        except:
-            pass
+            # بۆتەکە لێرەدا پینگ بۆ یو-ئاڕ-ئێڵەکەی خۆی دەکات
+            requests.get("https://forex-bot-dq8f.onrender.com", timeout=15)
+            logging.info("♻️ Self-ping: Server is awake and scanning!")
+        except Exception as e:
+            logging.error(f"Ping error: {e}")
         time.sleep(300) # هەر ٥ خولەک جارێک خۆی تازە دەکاتەوە
 
-# دەستپێکردنی پڕۆسەی بەخەبەر هێنانەوە لە پشتەوە
-threading.Thread(target=run_keep_alive, daemon=True).start()
 # ---------------------------------------------------------
 
 logging.basicConfig(level=logging.INFO)
@@ -36,11 +33,11 @@ logger = logging.getLogger(__name__)
 
 BAGHDAD_TZ = timezone(timedelta(hours=3))
 
-# تۆکنی نوێی تێلەگرام بۆ @ForexKurdistan_bot (گۆڕدرا)
+# تۆکنی نوێی تێلەگرام بۆ @ForexKurdistan_bot
 FB_BOT_TOKEN = "8611761761:AAEU_XJjV8QQ3LPr2rWf6gDBNnH2TVbs3_E"
 FB_CHANNEL_ID = -1003829360084
 
-# زانیارییەکانی فەیسبووک (وەک خۆی هێڵراوەتەوە)
+# زانیارییەکانی فەیسبووک
 FACEBOOK_PAGE_TOKEN = "EAAUuD0sVsdcBRB2vlTc2M8RPkPJWQY50ako6WZBLBA2G0lLZCgttUed0GYIFV0jRFRsOk8A9Py1MMvrfL9RP39vSW9hHaENjKQZAxM9nlOFZAbh8foqiBmQGhz7nH2T2dqwgCs9SPdV3cSs8HEA2UlWWnmYDyO3eZCqjvekyAVseZA552tRTQn5CHr2IYzyr1Kzb5ZCpYsV"
 FACEBOOK_PAGE_ID = "994664793738553"
 
@@ -144,7 +141,7 @@ async def run_bot():
     bot = Bot(token=FB_BOT_TOKEN)
     scraper = NewsScraper()
     await setup_db()
-    logger.info("🤖 Forex Kurdistan Bot started with NEW Token!")
+    logger.info("🤖 Forex Kurdistan Bot engine is now active!")
     
     last_calendar_day = ""
     last_wrap_day = ""
@@ -180,6 +177,7 @@ async def run_bot():
             for article in articles:
                 clean_url = article['url'].split('?')[0].split('#')[0]
                 if not await is_posted(clean_url):
+                    # لێرە بانگی Groq و Gemini دەکرێت لە translator.py
                     kurdish_text = await process_smart_news(article['title'])
                     if kurdish_text:
                         await mark_posted(clean_url)
@@ -207,6 +205,14 @@ async def run_bot():
             logger.error(f"Main loop error: {e}")
             await asyncio.sleep(60)
 
+# --- بەشی کۆتایی کە هەموو بەشەکان بەیەکەوە ڕێکدەخات ---
 if __name__ == "__main__":
-    asyncio.run(run_bot())
+    # ١. ڕانکردنی سێرڤەر بۆ Render لە پشتەوە
+    threading.Thread(target=keep_alive, daemon=True).start()
     
+    # ٢. ڕانکردنی پینگەر بۆ ئەوەی نەخەوێت لە Threadێکی تر
+    threading.Thread(target=start_pinging, daemon=True).start()
+    
+    # ٣. دەستپێکردنی بزوێنەری سەرەکی (ئەمە نابێت لە Thread بێت چونکە Asyncـە)
+    logger.info("🚀 Bot is initializing...")
+    asyncio.run(run_bot())
