@@ -27,10 +27,9 @@ async def process_smart_news(title_en):
         if rating >= 6:
             # ٢. وەرگێڕان بە Groq - لێرەدا فەرمانەکەمان توند کردووە بۆ ئەوەی تێبینی نەنووسێت
             translate_prompt = (
-                f"Translate this Forex news title into professional Sorani Kurdish: '{title_en}'. "
-                "Return ONLY the translated text in Kurdish Arabic script. "
-                "Do not include any notes, explanations, or alternative scripts. "
-                "Strictly provide the translation only."
+                f"Translate this Forex news title into professional Sorani Kurdish (Arabic script): '{title_en}'. "
+                "CRITICAL: Return ONLY the translated Kurdish text. Do NOT include any English notes, "
+                "no explanations about the script, and no Latin characters. Just the translation."
             )
             translate_resp = client_groq.chat.completions.create(
                 model="llama-3.3-70b-versatile",
@@ -60,3 +59,4 @@ async def generate_daily_analysis(articles):
     except Exception as e:
         logger.error(f"Daily analysis error: {e}")
         return None
+
