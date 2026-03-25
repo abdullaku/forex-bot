@@ -1,13 +1,18 @@
 import logging
+import os  # ئەمەمان زیاد کرد بۆ ئەوەی ڕاستەوخۆ کلیلەکە بخوێنێتەوە ئەگەر Config کێشەی هەبوو
 from google import genai
 from groq import Groq
 from config import Config
 
 logger = logging.getLogger(__name__)
 
-# ١. ناساندنی کلاینتەکان بە شێوازی فەرمی و نوێ
-client_gemini = genai.Client(api_key=Config.GEMINI_API_KEY)
-client_groq = Groq(api_key=Config.GROQ_API_KEY)
+# ١. ناساندنی کلاینتەکان (بە گەرەنتی وەرگرتنی کلیلەکان لە Render)
+# ئەگەر لە ناو Config نەبوو، با ڕاستەوخۆ لە Environment وەری بگرێت
+GEMINI_KEY = getattr(Config, 'GEMINI_API_KEY', os.environ.get("GEMINI_API_KEY"))
+GROQ_KEY = getattr(Config, 'GROQ_API_KEY', os.environ.get("GROQ_API_KEY"))
+
+client_gemini = genai.Client(api_key=GEMINI_KEY)
+client_groq = Groq(api_key=GROQ_KEY)
 
 async def process_smart_news(title_en):
     try:
@@ -23,11 +28,11 @@ async def process_smart_news(title_en):
         
         logger.info(f"📊 Rating: {rating}/10 for: {title_en[:40]}...")
 
-        # ٣. ئەگەر نمرەکە ٦ یان زیاتر بوو، وەرگێڕان بە مۆدێلە نوێیەکەی Gemini
+        # ٣. ئەگەر نمرەکە ٦ یان زیاتر بوو، وەرگێڕان بە Gemini 2.0 Flash
         if rating >= 6:
             translate_prompt = f"Translate this Forex news into professional Sorani Kurdish: {title_en}"
             response = client_gemini.models.generate_content(
-                model="gemini-2.0-flash", # نوێترین و باشترین مۆدێل
+                model="gemini-2.0-flash",
                 contents=translate_prompt
             )
             return response.text.strip()
