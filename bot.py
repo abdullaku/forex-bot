@@ -1,6 +1,8 @@
 import asyncio
 import logging
 import requests
+import threading  # بۆ ئەوەی سێرڤەر و بۆتەکە پێکەوە کار بکەن
+import time       # بۆ دیاریکردنی کاتی نێوان پینگ کردنەکان
 from telegram import Bot, Update
 from telegram.ext import Application, MessageHandler, filters, ContextTypes
 from sources import NewsScraper
@@ -9,8 +11,25 @@ from config import Config
 from database import setup_db, is_posted, mark_posted, save_news, get_todays_news
 from datetime import datetime, timezone, timedelta
 
+# --- تەنها ئەم بەشە زیاد کراوە بۆ چارەسەری خەوتنی سێرڤەر ---
 from keep_alive import keep_alive
-keep_alive()
+
+def run_keep_alive():
+    # دەستپێکردنی سێرڤەرە کورتەکە
+    keep_alive()
+    # دروستکردنی ئەڵقەیەک بۆ ئەوەی سێرڤەرەکە بە خەبەر بمێنێتەوە
+    while True:
+        try:
+            # بۆتەکە لێرەدا خۆی بانگی خۆی دەکاتەوە
+            requests.get("https://forex-bot-dq8f.onrender.com", timeout=10)
+            logging.info("♻️ Self-ping: Server is awake!")
+        except:
+            pass
+        time.sleep(300) # هەر ٥ خولەک جارێک خۆی تازە دەکاتەوە
+
+# دەستپێکردنی پڕۆسەی بەخەبەر هێنانەوە لە پشتەوە
+threading.Thread(target=run_keep_alive, daemon=True).start()
+# ---------------------------------------------------------
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -122,7 +141,6 @@ async def check_calendar_alerts(bot, alerted_events, posted_results):
         logger.error(f"Calendar alert error: {e}")
 
 async def run_bot():
-    # گرنگ: بەکارهێنانی تۆکنە نوێیەکە لێرەدا
     bot = Bot(token=FB_BOT_TOKEN)
     scraper = NewsScraper()
     await setup_db()
@@ -191,3 +209,4 @@ async def run_bot():
 
 if __name__ == "__main__":
     asyncio.run(run_bot())
+    
