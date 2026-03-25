@@ -60,7 +60,6 @@ async def run_bot():
         try:
             now = datetime.now(BAGHDAD_TZ)
             current_day = now.strftime("%Y-%m-%d")
-            # کاتی ئێستای بەغدا بۆ ناو پۆستەکە
             current_time_str = now.strftime("%H:%M") 
             current_date_str = now.strftime("%d/%m/%Y")
 
@@ -68,31 +67,30 @@ async def run_bot():
             if now.hour == 9 and last_calendar_day != current_day:
                 calendar_events = await scraper.fetch_calendar()
                 if calendar_events:
-                    msg = "📅 **ڕۆژژمێری ئابووری ئەمڕۆ**\n\n" + "\n".join(calendar_events)
+                    msg = "📅 <b>ڕۆژژمێری ئابووری ئەمڕۆ</b>\n\n" + "\n".join(calendar_events)
                     await bot.send_message(chat_id=CHANNEL_ID, text=msg, parse_mode="HTML")
                     post_to_facebook(msg)
                 last_calendar_day = current_day
 
-            # ٢. پۆستی هەواڵە نوێیەکان بە دیکۆری تایبەت
+            # ٢. پۆستی هەواڵە نوێیەکان بە شێوازی جاران
             articles = await scraper.fetch_all()
             for article in articles:
                 url = article['url'].split('?')[0]
                 if not await is_posted(url):
+                    # kurdish_text ئێستا هەم سەردێڕ و هەم کورتەی تێدایە (ئەگەر translator.py گۆڕابێت)
                     kurdish_text = await process_smart_news(article['title'])
                     if kurdish_text:
                         await mark_posted(url)
                         
-                        # --- لێرەدا دیکۆری پۆستەکە ڕێکدەخەینەوە ---
                         source_name = article.get('source', 'Bloomberg Quicktake')
                         
+                        # دروستکردنی پەیامەکە بەبێ ئایدی و بە کورتەی هەواڵەوە
                         post_msg = (
-                            f"📰 <b>{kurdish_text}</b>\n\n"
+                            f"📰 {kurdish_text}\n\n"
                             f"📌 {source_name}\n"
                             f"🔗 <a href='{url}'>بینە هەواڵەکە لە سەرچاوە</a>\n"
-                            f"🕐 {current_time_str} | {current_date_str}\n\n"
-                            f"🆔 @KURD_TRADER"
+                            f"🕐 {current_time_str} | {current_date_str}"
                         )
-                        # ---------------------------------------
 
                         if article.get('image_url'):
                             await bot.send_photo(chat_id=CHANNEL_ID, photo=article['image_url'], caption=post_msg, parse_mode="HTML")
@@ -114,3 +112,4 @@ if __name__ == "__main__":
     threading.Thread(target=keep_alive, daemon=True).start()
     threading.Thread(target=start_pinging, daemon=True).start()
     asyncio.run(run_bot())
+    
