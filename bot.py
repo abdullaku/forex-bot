@@ -17,8 +17,11 @@ logger = logging.getLogger(__name__)
 
 BAGHDAD_TZ = timezone(timedelta(hours=3))
 
-FB_BOT_TOKEN = "8541993321:AAHAZk0-599M17p-ejvyUizjpd0NVOhho7g"
+# تۆکنی نوێی تێلەگرام بۆ @ForexKurdistan_bot (گۆڕدرا)
+FB_BOT_TOKEN = "8611761761:AAEU_XJjV8QQ3LPr2rWf6gDBNnH2TVbs3_E"
 FB_CHANNEL_ID = -1003829360084
+
+# زانیارییەکانی فەیسبووک (وەک خۆی هێڵراوەتەوە)
 FACEBOOK_PAGE_TOKEN = "EAAUuD0sVsdcBRB2vlTc2M8RPkPJWQY50ako6WZBLBA2G0lLZCgttUed0GYIFV0jRFRsOk8A9Py1MMvrfL9RP39vSW9hHaENjKQZAxM9nlOFZAbh8foqiBmQGhz7nH2T2dqwgCs9SPdV3cSs8HEA2UlWWnmYDyO3eZCqjvekyAVseZA552tRTQn5CHr2IYzyr1Kzb5ZCpYsV"
 FACEBOOK_PAGE_ID = "994664793738553"
 
@@ -28,12 +31,15 @@ def post_to_facebook(text, image_url=None, link_url=None):
         href_match = re.search(r"href=['\"]([^'\"]+)['\"]", text)
         if href_match:
             link_url = href_match.group(1)
+    
     clean_text = re.sub(r'<[^>]+>', '', text)
     clean_text = re.sub(r'🔗.*\n?', '', clean_text).strip()
+    
     if not link_url:
         urls = re.findall(r'https?://\S+', clean_text)
         if urls:
             link_url = urls[0]
+            
     try:
         if image_url:
             url = f"https://graph.facebook.com/v19.0/{FACEBOOK_PAGE_ID}/photos"
@@ -47,6 +53,7 @@ def post_to_facebook(text, image_url=None, link_url=None):
         else:
             url = f"https://graph.facebook.com/v19.0/{FACEBOOK_PAGE_ID}/feed"
             data = {"message": clean_text, "access_token": FACEBOOK_PAGE_TOKEN}
+            
         resp = requests.post(url, data=data)
         result = resp.json()
         if "id" in result:
@@ -54,47 +61,7 @@ def post_to_facebook(text, image_url=None, link_url=None):
         else:
             logger.error(f"❌ فەیسبووک: {result}")
     except Exception as e:
-        logger.error(f"❌ هەڵە: {e}")
-
-async def handle_channel_post(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    message = update.channel_post
-    if not message or message.chat.id != FB_CHANNEL_ID:
-        return
-    text = message.text or message.caption or ""
-    image_url = None
-    link_url = None
-    if message.photo:
-        photo = message.photo[-1]
-        file = await context.bot.get_file(photo.file_id)
-        image_url = file.file_path
-    if message.entities:
-        for entity in message.entities:
-            if entity.type == "url":
-                link_url = text[entity.offset:entity.offset + entity.length]
-                break
-            elif entity.type == "text_link":
-                link_url = entity.url
-                break
-    if message.caption_entities:
-        for entity in message.caption_entities:
-            if entity.type == "url":
-                link_url = text[entity.offset:entity.offset + entity.length]
-                break
-            elif entity.type == "text_link":
-                link_url = entity.url
-                break
-    if text or image_url:
-        logger.info(f"📨 پۆستی نوێ بۆ فەیسبووک: {text[:50]}")
-        post_to_facebook(text, image_url, link_url)
-
-async def run_fb_sync_async():
-    app = Application.builder().token(FB_BOT_TOKEN).build()
-    app.add_handler(MessageHandler(filters.ALL, handle_channel_post))
-    logger.info("🔄 FB Sync Bot دەستی کرد...")
-    async with app:
-        await app.start()
-        await app.updater.start_polling()
-        await asyncio.Event().wait()
+        logger.error(f"❌ هەڵەی فەیسبووک: {e}")
 
 async def format_post(kurdish_text, article_url):
     post = f"📢 <b>هەواڵی ئابووری و فۆرێکس</b>\n\n"
@@ -131,109 +98,90 @@ async def check_calendar_alerts(bot, alerted_events, posted_results):
             forecast = event.get('forecast', 'نادیارە')
             previous = event.get('previous', 'نادیارە')
             actual = event.get('actual', None)
+            
             if actual and event_id not in posted_results:
                 posted_results.add(event_id)
                 try:
                     act_val = float(actual.replace('%', '').replace('K', '').replace('M', '').replace('B', ''))
                     fore_val = float(forecast.replace('%', '').replace('K', '').replace('M', '').replace('B', ''))
-                    if act_val > fore_val:
-                        result_emoji = "✅ زیاتر — ئەرێنی"
-                    elif act_val < fore_val:
-                        result_emoji = "❌ کەمتر — نەرێنی"
-                    else:
-                        result_emoji = "➡️ وەک پێشبینی"
+                    result_emoji = "✅ زیاتر — ئەرێنی" if act_val > fore_val else "❌ کەمتر — نەرێنی" if act_val < fore_val else "➡️ وەک پێشبینی"
                 except:
                     result_emoji = "📊"
-                msg = f"🔴 <b>ئەنجامی هەواڵی گرنگ</b>\n\n"
-                msg += f"🏛 {title} | {currency}\n\n"
-                msg += f"▪️ پێشوو: {previous}\n"
-                msg += f"▪️ پێشبینی: {forecast}\n"
-                msg += f"▫️ ئەنجام: <b>{actual}</b>\n\n"
-                msg += f"{result_emoji}\n\n"
-                msg += f"🕐 {now.strftime('%H:%M | %d/%m/%Y')}"
+                
+                msg = f"🔴 <b>ئەنجامی هەواڵی گرنگ</b>\n\n🏛 {title} | {currency}\n\n▪️ پێشوو: {previous}\n▪️ پێشبینی: {forecast}\n▫️ ئەنجام: <b>{actual}</b>\n\n{result_emoji}\n\n🕐 {now.strftime('%H:%M | %d/%m/%Y')}"
                 await bot.send_message(chat_id=Config.CHANNEL_ID, text=msg, parse_mode="HTML")
+                post_to_facebook(msg)
+                
             elif not actual and 45 <= diff_minutes <= 75 and event_id not in alerted_events:
                 alerted_events.add(event_id)
-                msg = f"⚠️ <b>ئاگادارکردنەوە — دوای ١ کاتژمێر</b>\n\n"
-                msg += f"🔴 {title} | {currency}\n\n"
-                msg += f"▪️ پێشوو: {previous}\n"
-                msg += f"▪️ پێشبینی: {forecast}\n\n"
-                msg += f"⏰ کات: {event_dt_baghdad.strftime('%H:%M')}\n"
-                msg += f"🕐 {now.strftime('%H:%M | %d/%m/%Y')}"
+                msg = f"⚠️ <b>ئاگادارکردنەوە — دوای ١ کاتژمێر</b>\n\n🔴 {title} | {currency}\n\n▪️ پێشوو: {previous}\n▪️ پێشبینی: {forecast}\n\n⏰ کات: {event_dt_baghdad.strftime('%H:%M')}\n🕐 {now.strftime('%H:%M | %d/%m/%Y')}"
                 await bot.send_message(chat_id=Config.CHANNEL_ID, text=msg, parse_mode="HTML")
+                post_to_facebook(msg)
+
     except Exception as e:
         logger.error(f"Calendar alert error: {e}")
 
 async def run_bot():
-    bot = Bot(token=Config.BOT_TOKEN)
+    # گرنگ: بەکارهێنانی تۆکنە نوێیەکە لێرەدا
+    bot = Bot(token=FB_BOT_TOKEN)
     scraper = NewsScraper()
     await setup_db()
-    logger.info("🤖 Smart Forex Bot started with Groq & Gemini!")
-    asyncio.create_task(run_fb_sync_async())
+    logger.info("🤖 Forex Kurdistan Bot started with NEW Token!")
+    
     last_calendar_day = ""
     last_wrap_day = ""
     alerted_events = set()
     posted_results = set()
+    
     while True:
         try:
             now = datetime.now(BAGHDAD_TZ)
             current_hour = now.hour
             current_day = now.strftime("%Y-%m-%d")
 
-            # ڕۆژنامەی بەیانیان
             if current_hour == 9 and last_calendar_day != current_day:
-                try:
-                    calendar_events = await scraper.fetch_calendar()
-                    if calendar_events:
-                        msg = "\n".join(calendar_events)
-                        await bot.send_message(chat_id=Config.CHANNEL_ID, text=msg, parse_mode="HTML")
-                    last_calendar_day = current_day
-                except Exception as e:
-                    logger.error(f"Calendar fetch error: {e}")
+                calendar_events = await scraper.fetch_calendar()
+                if calendar_events:
+                    msg = "\n".join(calendar_events)
+                    await bot.send_message(chat_id=Config.CHANNEL_ID, text=msg, parse_mode="HTML")
+                    post_to_facebook(msg)
+                last_calendar_day = current_day
 
-            # ئاگادارکردنەوەی کارێکی ئابووری
-            try:
-                await check_calendar_alerts(bot, alerted_events, posted_results)
-            except Exception as e:
-                logger.error(f"Calendar alert error: {e}")
+            await check_calendar_alerts(bot, alerted_events, posted_results)
 
-            # شیکاری کۆتایی ڕۆژ
             if current_hour >= 22 and last_wrap_day != current_day:
-                try:
-                    todays_articles = await get_todays_news()
-                    if todays_articles:
-                        analysis_text = await generate_daily_analysis(todays_articles)
-                        if analysis_text:
-                            await bot.send_message(chat_id=Config.CHANNEL_ID, text=analysis_text, parse_mode="HTML")
-                    last_wrap_day = current_day
-                except Exception as e:
-                    logger.error(f"Daily wrap error: {e}")
+                todays_articles = await get_todays_news()
+                if todays_articles:
+                    analysis_text = await generate_daily_analysis(todays_articles)
+                    if analysis_text:
+                        await bot.send_message(chat_id=Config.CHANNEL_ID, text=analysis_text, parse_mode="HTML")
+                        post_to_facebook(analysis_text)
+                last_wrap_day = current_day
 
-            # پشکنینی هەواڵە نوێیەکان
-            try:
-                articles = await scraper.fetch_all()
-                for article in articles:
-                    clean_url = article['url'].split('?')[0].split('#')[0]
-                    if not await is_posted(clean_url):
-                        kurdish_text = await process_smart_news(article['title'])
-                        if kurdish_text:
-                            await mark_posted(clean_url)
-                            text = await format_post(kurdish_text, clean_url)
-                            try:
-                                if article.get('image_url'):
-                                    await bot.send_photo(chat_id=Config.CHANNEL_ID, photo=article['image_url'], caption=text, parse_mode="HTML")
-                                else:
-                                    await bot.send_message(chat_id=Config.CHANNEL_ID, text=text, parse_mode="HTML", disable_web_page_preview=True)
-                            except Exception as e:
-                                logger.error(f"Send error: {e}")
+            articles = await scraper.fetch_all()
+            for article in articles:
+                clean_url = article['url'].split('?')[0].split('#')[0]
+                if not await is_posted(clean_url):
+                    kurdish_text = await process_smart_news(article['title'])
+                    if kurdish_text:
+                        await mark_posted(clean_url)
+                        text = await format_post(kurdish_text, clean_url)
+                        
+                        try:
+                            if article.get('image_url'):
+                                await bot.send_photo(chat_id=Config.CHANNEL_ID, photo=article['image_url'], caption=text, parse_mode="HTML")
+                            else:
                                 await bot.send_message(chat_id=Config.CHANNEL_ID, text=text, parse_mode="HTML", disable_web_page_preview=True)
-                            article['title_ku'] = kurdish_text
-                            await save_news(article)
-                            await asyncio.sleep(Config.POST_DELAY_SECONDS)
-                        else:
-                            await mark_posted(clean_url)
-            except Exception as e:
-                logger.error(f"News fetch error: {e}")
+                        except Exception as e:
+                            logger.error(f"Telegram send error: {e}")
+
+                        post_to_facebook(text, image_url=article.get('image_url'), link_url=clean_url)
+
+                        article['title_ku'] = kurdish_text
+                        await save_news(article)
+                        await asyncio.sleep(Config.POST_DELAY_SECONDS)
+                    else:
+                        await mark_posted(clean_url)
 
             await asyncio.sleep(Config.CHECK_INTERVAL_SECONDS)
 
@@ -243,4 +191,3 @@ async def run_bot():
 
 if __name__ == "__main__":
     asyncio.run(run_bot())
-    
