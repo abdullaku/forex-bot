@@ -11,7 +11,7 @@ from database import setup_db, is_posted, mark_posted, save_news, get_todays_new
 from datetime import datetime, timezone, timedelta
 from keep_alive import keep_alive
 
-# --- Configuration ---
+# --- ڕێکخستنی سەرەتایی ---
 TOKEN = os.environ.get("TELEGRAM_TOKEN", "8611761761:AAEU_XJjV8QQ3LPr2rWf6gDBNnH2TVbs3_E")
 CHANNEL_ID = int(os.environ.get("CHANNEL_ID", -1003829360084))
 FACEBOOK_PAGE_TOKEN = os.environ.get("FACEBOOK_PAGE_TOKEN", "EAAUuD0sVsdcBRB2vlTc2M8RPkPJWQY50ako6WZBLBA2G0lLZCgttUed0GYIFV0jRFRsOk8A9Py1MMvrfL9RP39vSW9hHaENjKQZAxM9nlOFZAbh8foqiBmQGhz7nH2T2dqwgCs9SPdV3cSs8HEA2UlWWnmYDyO3eZCqjvekyAVseZA552tRTQn5CHr2IYzyr1Kzb5ZCpYsV")
@@ -60,7 +60,9 @@ async def run_bot():
         try:
             now = datetime.now(BAGHDAD_TZ)
             current_day = now.strftime("%Y-%m-%d")
-            current_time = now.strftime("%H:%M")
+            # کاتی ئێستای بەغدا بۆ ناو پۆستەکە
+            current_time_str = now.strftime("%H:%M") 
+            current_date_str = now.strftime("%d/%m/%Y")
 
             # ١. پۆستی کاڵێندەر (کاتژمێر ٩ی بەیانی)
             if now.hour == 9 and last_calendar_day != current_day:
@@ -71,7 +73,7 @@ async def run_bot():
                     post_to_facebook(msg)
                 last_calendar_day = current_day
 
-            # ٢. پۆستی هەواڵە نوێیەکان بە دیکۆری نوێ
+            # ٢. پۆستی هەواڵە نوێیەکان بە دیکۆری تایبەت
             articles = await scraper.fetch_all()
             for article in articles:
                 url = article['url'].split('?')[0]
@@ -80,30 +82,26 @@ async def run_bot():
                     if kurdish_text:
                         await mark_posted(url)
                         
-                        # لێرەدا دیکۆری پۆستەکە ڕێکدەخەینەوە وەک جاران
-                        source_display = article.get('source', 'Bloomberg Quicktake')
+                        # --- لێرەدا دیکۆری پۆستەکە ڕێکدەخەینەوە ---
+                        source_name = article.get('source', 'Bloomberg Quicktake')
                         
                         post_msg = (
                             f"📰 <b>{kurdish_text}</b>\n\n"
-                            f"📌 {source_display}\n"
+                            f"📌 {source_name}\n"
                             f"🔗 <a href='{url}'>بینە هەواڵەکە لە سەرچاوە</a>\n"
-                            f"🕐 {current_time} | {now.strftime('%d/%m/%Y')}\n\n"
+                            f"🕐 {current_time_str} | {current_date_str}\n\n"
                             f"🆔 @KURD_TRADER"
                         )
-                        
-                        try:
-                            if article.get('image_url'):
-                                await bot.send_photo(chat_id=CHANNEL_ID, photo=article['image_url'], caption=post_msg, parse_mode="HTML")
-                            else:
-                                await bot.send_message(chat_id=CHANNEL_ID, text=post_msg, parse_mode="HTML", disable_web_page_preview=True)
-                            
-                            post_to_facebook(post_msg, image_url=article.get('image_url'), link_url=url)
-                        except Exception as e:
-                            logger.error(f"Post error: {e}")
-                            
+                        # ---------------------------------------
+
+                        if article.get('image_url'):
+                            await bot.send_photo(chat_id=CHANNEL_ID, photo=article['image_url'], caption=post_msg, parse_mode="HTML")
+                        else:
+                            await bot.send_message(chat_id=CHANNEL_ID, text=post_msg, parse_mode="HTML", disable_web_page_preview=True)
+
+                        post_to_facebook(post_msg, image_url=article.get('image_url'), link_url=url)
                         await asyncio.sleep(POST_DELAY)
                     else:
-                        # ئەگەر نمرەی نزم بوو، تەنها وەک پۆست کراو نیشانی بدە بەبێ ناردن
                         await mark_posted(url)
 
             await asyncio.sleep(CHECK_INTERVAL)
