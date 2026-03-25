@@ -5,5 +5,5 @@ lxml
 Flask
 cryptography
 requests
-google-generativeai
+google-genai
 groq
