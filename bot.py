@@ -6,12 +6,12 @@ import threading
 import time
 from telegram import Bot
 from sources import NewsScraper
-from translator import process_smart_news, generate_daily_analysis
+from translator import process_smart_news # لێرە چاککرا
 from database import setup_db, is_posted, mark_posted, save_news, get_todays_news
 from datetime import datetime, timezone, timedelta
 from keep_alive import keep_alive
 
-# --- ڕێکخستنی سەرەتایی ---
+# --- Configuration ---
 TOKEN = os.environ.get("TELEGRAM_TOKEN", "8611761761:AAEU_XJjV8QQ3LPr2rWf6gDBNnH2TVbs3_E")
 CHANNEL_ID = int(os.environ.get("CHANNEL_ID", -1003829360084))
 FACEBOOK_PAGE_TOKEN = os.environ.get("FACEBOOK_PAGE_TOKEN", "EAAUuD0sVsdcBRB2vlTc2M8RPkPJWQY50ako6WZBLBA2G0lLZCgttUed0GYIFV0jRFRsOk8A9Py1MMvrfL9RP39vSW9hHaENjKQZAxM9nlOFZAbh8foqiBmQGhz7nH2T2dqwgCs9SPdV3cSs8HEA2UlWWnmYDyO3eZCqjvekyAVseZA552tRTQn5CHr2IYzyr1Kzb5ZCpYsV")
@@ -63,7 +63,6 @@ async def run_bot():
             current_time_str = now.strftime("%H:%M") 
             current_date_str = now.strftime("%d/%m/%Y")
 
-            # ١. پۆستی کاڵێندەر (کاتژمێر ٩ی بەیانی)
             if now.hour == 9 and last_calendar_day != current_day:
                 calendar_events = await scraper.fetch_calendar()
                 if calendar_events:
@@ -72,19 +71,15 @@ async def run_bot():
                     post_to_facebook(msg)
                 last_calendar_day = current_day
 
-            # ٢. پۆستی هەواڵە نوێیەکان بە شێوازی جاران
             articles = await scraper.fetch_all()
             for article in articles:
                 url = article['url'].split('?')[0]
                 if not await is_posted(url):
-                    # kurdish_text ئێستا هەم سەردێڕ و هەم کورتەی تێدایە (ئەگەر translator.py گۆڕابێت)
                     kurdish_text = await process_smart_news(article['title'])
                     if kurdish_text:
                         await mark_posted(url)
-                        
                         source_name = article.get('source', 'Bloomberg Quicktake')
                         
-                        # دروستکردنی پەیامەکە بەبێ ئایدی و بە کورتەی هەواڵەوە
                         post_msg = (
                             f"📰 {kurdish_text}\n\n"
                             f"📌 {source_name}\n"
@@ -112,4 +107,3 @@ if __name__ == "__main__":
     threading.Thread(target=keep_alive, daemon=True).start()
     threading.Thread(target=start_pinging, daemon=True).start()
     asyncio.run(run_bot())
-    
