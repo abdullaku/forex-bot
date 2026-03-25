@@ -1,22 +1,17 @@
 import logging
-import os  # ئەمەمان زیاد کرد بۆ ئەوەی ڕاستەوخۆ کلیلەکە بخوێنێتەوە ئەگەر Config کێشەی هەبوو
 from google import genai
 from groq import Groq
 from config import Config
 
 logger = logging.getLogger(__name__)
 
-# ١. ناساندنی کلاینتەکان (بە گەرەنتی وەرگرتنی کلیلەکان لە Render)
-# ئەگەر لە ناو Config نەبوو، با ڕاستەوخۆ لە Environment وەری بگرێت
-GEMINI_KEY = getattr(Config, 'GEMINI_API_KEY', os.environ.get("GEMINI_API_KEY"))
-GROQ_KEY = getattr(Config, 'GROQ_API_KEY', os.environ.get("GROQ_API_KEY"))
-
-client_gemini = genai.Client(api_key=GEMINI_KEY)
-client_groq = Groq(api_key=GROQ_KEY)
+# ناساندنی کلاینتەکان بە بەکارهێنانی کلیلەکانی ناو Config
+client_gemini = genai.Client(api_key=Config.GEMINI_API_KEY)
+client_groq = Groq(api_key=Config.GROQ_API_KEY)
 
 async def process_smart_news(title_en):
     try:
-        # ٢. نمرەدان بە هەواڵەکە (Groq - Llama 3.3 70B)
+        # ١. نمرەدان بە هەواڵەکە لە ڕێگەی Groq (Llama 3.3 70B)
         rating_prompt = f"Rate this news importance for Forex traders from 1 to 10: {title_en}. Return ONLY the number."
         rating_resp = client_groq.chat.completions.create(
             model="llama-3.3-70b-versatile",
@@ -28,7 +23,7 @@ async def process_smart_news(title_en):
         
         logger.info(f"📊 Rating: {rating}/10 for: {title_en[:40]}...")
 
-        # ٣. ئەگەر نمرەکە ٦ یان زیاتر بوو، وەرگێڕان بە Gemini 2.0 Flash
+        # ٢. ئەگەر نمرەکە ٦ یان زیاتر بوو، وەرگێڕان بە Gemini 2.0 Flash
         if rating >= 6:
             translate_prompt = f"Translate this Forex news into professional Sorani Kurdish: {title_en}"
             response = client_gemini.models.generate_content(
