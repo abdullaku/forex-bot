@@ -4,7 +4,7 @@ from groq import Groq
 
 logger = logging.getLogger(__name__)
 
-# تەنها کلیلی Groq دەهێنین
+# هێنانی کلیلی Groq
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
 
 # ناساندنی کلاینتی Groq
@@ -25,8 +25,13 @@ async def process_smart_news(title_en):
         logger.info(f"📊 Rating: {rating}/10 for: {title_en[:40]}...")
 
         if rating >= 6:
-            # ٢. وەرگێڕان بە Groq (لەجیاتی Gemini)
-            translate_prompt = f"Translate this Forex news into professional Sorani Kurdish: {title_en}"
+            # ٢. وەرگێڕان بە Groq - بە پرۆمپتێکی توند بۆ ڕێگری لە تێبینی زیادە
+            translate_prompt = (
+                f"Translate this Forex news into professional Sorani Kurdish: '{title_en}'. "
+                "Return ONLY the translated text in Kurdish Arabic script. "
+                "Do not include any notes, explanations, or alternative scripts. "
+                "Strictly provide the translation only."
+            )
             translate_resp = client_groq.chat.completions.create(
                 model="llama-3.3-70b-versatile",
                 messages=[{"role": "user", "content": translate_prompt}]
@@ -41,9 +46,12 @@ async def process_smart_news(title_en):
 async def generate_daily_analysis(articles):
     try:
         all_titles = "\n".join([a['title'] for a in articles])
-        prompt = f"Summarize these Forex news titles into a professional daily report in Sorani Kurdish:\n{all_titles}"
+        # شیکاری ڕۆژانەش بە پرۆمپتێکی هاوشێوە ڕێکدەخەین
+        prompt = (
+            f"Summarize these Forex news titles into a professional daily report in Sorani Kurdish:\n{all_titles}\n"
+            "Return ONLY the Kurdish summary. No notes or English explanations."
+        )
         
-        # شیکاری ڕۆژانەش بە Groq ئەنجام دەدەین
         analysis_resp = client_groq.chat.completions.create(
             model="llama-3.3-70b-versatile",
             messages=[{"role": "user", "content": prompt}]
