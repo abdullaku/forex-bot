@@ -59,29 +59,45 @@ def build_telegram_message(text, source, url, current_time, current_date):
     )
 
 
-def build_facebook_message(text, source, url, current_time, current_date):
+def build_facebook_message(text, source, current_time, current_date):
     clean = clean_text(text)
 
     return (
         f"📰 {clean}\n\n"
         f"📌 {source}\n"
-        f"🔗 بینە هەواڵەکە لە سەرچاوە\n"
-        f"{url}\n"
         f"🕐 {current_time} | {current_date}"
     )
 
 
 def post_to_facebook(text, image_url=None, link_url=None):
     try:
-        url = f"https://graph.facebook.com/v19.0/{FACEBOOK_PAGE_ID}/feed"
-        data = {"message": text, "access_token": FACEBOOK_PAGE_TOKEN}
+        clean = clean_text(text)
 
-        if image_url:
+        # گرنگ: لە Facebook لینکەکە لە ناو دەق مەهێڵە
+        clean = re.sub(r"🔗.*", "", clean).strip()
+        clean = re.sub(r"\n{3,}", "\n\n", clean).strip()
+
+        # ئەگەر لینک هەبێت، پاشەکەوتی Facebook لە ژێر پۆست نیشان بدرێت
+        if link_url:
+            url = f"https://graph.facebook.com/v19.0/{FACEBOOK_PAGE_ID}/feed"
+            data = {
+                "message": clean,
+                "link": link_url,
+                "access_token": FACEBOOK_PAGE_TOKEN
+            }
+        elif image_url:
             url = f"https://graph.facebook.com/v19.0/{FACEBOOK_PAGE_ID}/photos"
-            data = {"url": image_url, "caption": text, "access_token": FACEBOOK_PAGE_TOKEN}
-
-        elif link_url:
-            data["link"] = link_url
+            data = {
+                "url": image_url,
+                "caption": clean,
+                "access_token": FACEBOOK_PAGE_TOKEN
+            }
+        else:
+            url = f"https://graph.facebook.com/v19.0/{FACEBOOK_PAGE_ID}/feed"
+            data = {
+                "message": clean,
+                "access_token": FACEBOOK_PAGE_TOKEN
+            }
 
         requests.post(url, data=data, timeout=30)
 
@@ -145,7 +161,6 @@ async def run_bot():
                         facebook_msg = build_facebook_message(
                             text=text,
                             source=source,
-                            url=url,
                             current_time=current_time,
                             current_date=current_date
                         )
