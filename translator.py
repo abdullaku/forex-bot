@@ -10,7 +10,10 @@ client = Groq(api_key=os.getenv("GROQ_API_KEY"))
 async def process_smart_news(title, description=""):
     try:
         # 🔹 1. Rating
-        rating_prompt = f"Rate this Forex news from 1 to 10: {title}. فقط رقم."
+        rating_prompt = (
+            f"Rate this Forex news from 1 to 10: {title}. "
+            f"Return only one number."
+        )
 
         rating_resp = client.chat.completions.create(
             model="llama-3.3-70b-versatile",
@@ -22,20 +25,26 @@ async def process_smart_news(title, description=""):
 
         logger.info(f"Rating: {rating}")
 
-        # 🔻 فلتر
+        # 🔻 Filter
         if rating < 6:
             return None
 
         # 🔹 2. Translation
-        content = f"{title}\n{description}"
+        content = f"{title}\n{description}".strip()
 
         prompt = (
-            f"Translate and summarize this Forex news into Kurdish (Sorani):\n"
-            f"{content}\n\n"
-            f"Give:\n"
-            f"- Strong Kurdish title\n"
-            f"- Short summary\n"
-            f"Only Kurdish."
+            "Translate and summarize this Forex news into Kurdish Sorani.\n\n"
+            f"News:\n{content}\n\n"
+            "Instructions:\n"
+            "1. Write one strong Kurdish title.\n"
+            "2. Write one short Kurdish summary.\n"
+            "3. Kurdish Sorani only.\n"
+            "4. No English.\n"
+            "5. No markdown.\n"
+            "6. Do not use ** or * or bullets or hashtags.\n"
+            "7. Plain clean text only.\n"
+            "8. Output format must be:\n"
+            "TITLE\n\nSUMMARY"
         )
 
         resp = client.chat.completions.create(
@@ -43,7 +52,16 @@ async def process_smart_news(title, description=""):
             messages=[{"role": "user", "content": prompt}]
         )
 
-        return resp.choices[0].message.content.strip()
+        result = resp.choices[0].message.content.strip()
+
+        # پاککردنەوەی زیادە بۆ ئەگەر markdown هات
+        result = result.replace("**", "")
+        result = result.replace("__", "")
+        result = result.replace("```", "")
+        result = result.replace("##", "")
+        result = result.replace("*", "")
+
+        return result.strip()
 
     except Exception as e:
         logger.error(f"Translator error: {e}")
