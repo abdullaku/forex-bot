@@ -1,4 +1,6 @@
 import os
+import re
+import html
 import asyncio
 import logging
 import requests
@@ -23,6 +25,52 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
+def clean_text(text):
+    if not text:
+        return ""
+
+    text = text.strip()
+
+    # markdown / symbols cleanup
+    text = text.replace("**", "")
+    text = text.replace("__", "")
+    text = text.replace("```", "")
+    text = text.replace("##", "")
+    text = text.replace("*", "")
+
+    # normalize spaces/newlines
+    text = re.sub(r"\n{3,}", "\n\n", text)
+    text = re.sub(r"[ \t]{2,}", " ", text)
+
+    return text.strip()
+
+
+def build_telegram_message(text, source, url, current_time, current_date):
+    clean = clean_text(text)
+    safe_text = html.escape(clean)
+    safe_source = html.escape(source)
+    safe_url = html.escape(url, quote=True)
+
+    return (
+        f"📰 {safe_text}\n\n"
+        f"📌 {safe_source}\n"
+        f"🔗 <a href='{safe_url}'>بینە هەواڵەکە لە سەرچاوە</a>\n"
+        f"🕐 {current_time} | {current_date}"
+    )
+
+
+def build_facebook_message(text, source, url, current_time, current_date):
+    clean = clean_text(text)
+
+    return (
+        f"📰 {clean}\n\n"
+        f"📌 {source}\n"
+        f"🔗 بینە هەواڵەکە لە سەرچاوە\n"
+        f"{url}\n"
+        f"🕐 {current_time} | {current_date}"
+    )
+
+
 def post_to_facebook(text, image_url=None, link_url=None):
     try:
         url = f"https://graph.facebook.com/v19.0/{FACEBOOK_PAGE_ID}/feed"
@@ -35,7 +83,7 @@ def post_to_facebook(text, image_url=None, link_url=None):
         elif link_url:
             data["link"] = link_url
 
-        requests.post(url, data=data)
+        requests.post(url, data=data, timeout=30)
 
     except Exception as e:
         logger.error(f"FB Error: {e}")
@@ -62,8 +110,13 @@ async def run_bot():
                 events = await scraper.fetch_calendar()
                 if events:
                     msg = "📅 <b>ڕۆژژمێری ئابووری ئەمڕۆ</b>\n\n" + "\n".join(events)
-                    await bot.send_message(chat_id=CHANNEL_ID, text=msg, parse_mode="HTML")
-                    post_to_facebook(msg)
+                    await bot.send_message(
+                        chat_id=CHANNEL_ID,
+                        text=msg,
+                        parse_mode="HTML",
+                        disable_web_page_preview=True
+                    )
+                    post_to_facebook(clean_text(msg))
 
                 last_calendar_day = current_day
 
@@ -81,19 +134,42 @@ async def run_bot():
 
                         source = article.get("source", "News")
 
-                        msg = (
-                            f"📰 {text}\n\n"
-                            f"📌 {source}\n"
-                            f"🔗 <a href='{url}'>بینە هەواڵەکە</a>\n"
-                            f"🕐 {current_time} | {current_date}"
+                        telegram_msg = build_telegram_message(
+                            text=text,
+                            source=source,
+                            url=url,
+                            current_time=current_time,
+                            current_date=current_date
+                        )
+
+                        facebook_msg = build_facebook_message(
+                            text=text,
+                            source=source,
+                            url=url,
+                            current_time=current_time,
+                            current_date=current_date
                         )
 
                         if article.get("image_url"):
-                            await bot.send_photo(chat_id=CHANNEL_ID, photo=article["image_url"], caption=msg, parse_mode="HTML")
+                            await bot.send_photo(
+                                chat_id=CHANNEL_ID,
+                                photo=article["image_url"],
+                                caption=telegram_msg[:1024],
+                                parse_mode="HTML"
+                            )
                         else:
-                            await bot.send_message(chat_id=CHANNEL_ID, text=msg, parse_mode="HTML")
+                            await bot.send_message(
+                                chat_id=CHANNEL_ID,
+                                text=telegram_msg,
+                                parse_mode="HTML",
+                                disable_web_page_preview=True
+                            )
 
-                        post_to_facebook(msg, image_url=article.get("image_url"), link_url=url)
+                        post_to_facebook(
+                            facebook_msg,
+                            image_url=article.get("image_url"),
+                            link_url=url
+                        )
 
                         await asyncio.sleep(POST_DELAY)
 
