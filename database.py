@@ -4,50 +4,35 @@ import aiohttp
 
 logger = logging.getLogger(__name__)
 
-SUPABASE_URL = os.getenv("SUPABASE_URL", "https://xekpxulamhgplnxfnczp.supabase.co")
-SUPABASE_KEY = os.getenv("SUPABASE_KEY", "sb_publishable_3i3wA3W-__nQLysnBSB6sQ__Ye-Bn4P")
+SUPABASE_URL = os.environ.get("SUPABASE_URL")
+SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
 
-async def setup_db():
-    logger.info("✅ Database ready!")
 
 async def is_posted(url):
     async with aiohttp.ClientSession() as session:
         async with session.get(
             f"{SUPABASE_URL}/rest/v1/posted_urls?url=eq.{url}",
-            headers={"apikey": SUPABASE_KEY, "Authorization": f"Bearer {SUPABASE_KEY}"}
+            headers={
+                "apikey": SUPABASE_KEY,
+                "Authorization": f"Bearer {SUPABASE_KEY}"
+            }
         ) as resp:
             data = await resp.json()
             return len(data) > 0
+
 
 async def mark_posted(url):
     async with aiohttp.ClientSession() as session:
         await session.post(
             f"{SUPABASE_URL}/rest/v1/posted_urls",
-            headers={"apikey": SUPABASE_KEY, "Authorization": f"Bearer {SUPABASE_KEY}", "Content-Type": "application/json", "Prefer": "return=minimal"},
+            headers={
+                "apikey": SUPABASE_KEY,
+                "Authorization": f"Bearer {SUPABASE_KEY}",
+                "Content-Type": "application/json"
+            },
             json={"url": url}
         )
 
-async def save_news(article):
-    async with aiohttp.ClientSession() as session:
-        await session.post(
-            f"{SUPABASE_URL}/rest/v1/news",
-            headers={"apikey": SUPABASE_KEY, "Authorization": f"Bearer {SUPABASE_KEY}", "Content-Type": "application/json", "Prefer": "return=minimal"},
-            json={
-                "title_ku": article.get("title_ku", ""),
-                "summary_ku": article.get("summary_ku", ""),
-                "source": article.get("source", ""),
-                "url": article.get("url", ""),
-                "pairs": ", ".join(article.get("pairs", []))
-            }
-        )
 
-async def get_todays_news():
-    from datetime import datetime, timezone, timedelta
-    today = datetime.now(timezone(timedelta(hours=3))).strftime('%Y-%m-%d')
-    async with aiohttp.ClientSession() as session:
-        async with session.get(
-            f"{SUPABASE_URL}/rest/v1/news?published_at=gte.{today}&select=title_ku",
-            headers={"apikey": SUPABASE_KEY, "Authorization": f"Bearer {SUPABASE_KEY}"}
-        ) as resp:
-            data = await resp.json()
-            return [{"title": a.get("title_ku", "")} for a in data]
+async def setup_db():
+    logger.info("Database ready ✅")
