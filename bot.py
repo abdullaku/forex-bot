@@ -1,7 +1,7 @@
 import asyncio
 import logging
 
-from ئەپ import ForexBotApp
+from app import ForexBotApp
 
 logging.basicConfig(level=logging.INFO)
 
