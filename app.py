@@ -8,7 +8,7 @@ from database import setup_db, is_posted, mark_posted
 
 from config import Config
 from formatter import TextFormatter
-from telegram import TelegramService
+from telegram_service import TelegramService
 from facebook import FacebookService
 
 logger = logging.getLogger(__name__)
