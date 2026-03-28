@@ -50,9 +50,11 @@ class ForexBotApp:
             events = await self.scraper.fetch_calendar()
 
             if events:
-                msg = "📅 <b>ڕۆژژمێری ئابووری ئەمڕۆ</b>\n\n" + "\n".join(events)
-                await self.telegram.send_message(msg)
-                await self.facebook.post(TextFormatter.clean_text(msg))
+                # ✅ Telegram → HTML تاگ | Facebook → تەنها تێکست
+                tg_msg = self.scraper.calendar_service.build_telegram_msg(events)
+                fb_msg = self.scraper.calendar_service.build_facebook_msg(events)
+                await self.telegram.send_message(tg_msg)
+                await self.facebook.post(fb_msg)
 
             self.last_calendar_day = current_day
 
