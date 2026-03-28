@@ -73,8 +73,6 @@ class ForexBotApp:
             await mark_posted(url)
             return
 
-        await mark_posted(url)
-
         source = article.get("source", "News")
 
         telegram_msg = TextFormatter.build_telegram_message(
@@ -102,6 +100,8 @@ class ForexBotApp:
             image_url=article.get("image_url"),
             link_url=url,
         )
+
+        await mark_posted(url)  # ✅ دوای ناردنی سەرکەوتوو تۆمار دەکرێت
 
         await asyncio.sleep(self.config.POST_DELAY)
 
