@@ -1,4 +1,4 @@
-from calendar import CalendarService
+from economic_calendar import CalendarService
 from news import NewsScraper as NewsService
 
 
