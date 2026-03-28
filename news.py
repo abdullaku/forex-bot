@@ -4,12 +4,12 @@ import logging
 import aiohttp
 from bs4 import BeautifulSoup
 
-from پالێوەری_هەواڵ import پالێوەریهەواڵService
+from parser import NewsParser
 
 logger = logging.getLogger(__name__)
 
 
-class سەرچاوەیهەواڵService:
+class NewsScraper:
     RSS_FEEDS = {
         "CNBC": {"url": "https://www.cnbc.com/id/10000311/device/rss/rss.html", "category": "global_markets"},
         "Bloomberg": {"url": "https://www.bloomberg.com/feeds/bview/rss.xml", "category": "analysis"},
