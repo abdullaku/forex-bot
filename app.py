@@ -2,7 +2,7 @@ import asyncio
 import logging
 from datetime import datetime
 
-from sources import NewsScraper
+from sources import SourcesManager  # ✅ چاککراو
 from translator import process_smart_news
 from database import setup_db, is_posted, mark_posted
 
@@ -28,7 +28,7 @@ class ForexBotApp:
             page_token=self.config.FACEBOOK_PAGE_TOKEN,
         )
 
-        self.scraper = NewsScraper()
+        self.scraper = SourcesManager()  # ✅ چاککراو
         self.last_calendar_day = ""
 
     def get_now(self) -> datetime:
