@@ -52,7 +52,7 @@ class ForexBotApp:
             if events:
                 msg = "📅 <b>ڕۆژژمێری ئابووری ئەمڕۆ</b>\n\n" + "\n".join(events)
                 await self.telegram.send_message(msg)
-                self.facebook.post(TextFormatter.clean_text(msg))
+                await self.facebook.post(TextFormatter.clean_text(msg))
 
             self.last_calendar_day = current_day
 
@@ -95,7 +95,7 @@ class ForexBotApp:
             image_url=article.get("image_url"),
         )
 
-        self.facebook.post(
+        await self.facebook.post(
             text=facebook_msg,
             image_url=article.get("image_url"),
             link_url=url,
