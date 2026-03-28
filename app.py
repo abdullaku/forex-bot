@@ -28,7 +28,7 @@ class ForexBotApp:
             page_token=self.config.FACEBOOK_PAGE_TOKEN,
         )
 
-        self.scraper = SourcesManager()  # ✅ چاککراو
+        self.scraper = SourcesManager()  # ✅ چاككراو
         self.last_calendar_day = ""
 
     def get_now(self) -> datetime:
@@ -50,7 +50,6 @@ class ForexBotApp:
             events = await self.scraper.fetch_calendar()
 
             if events:
-                # ✅ Telegram → HTML تاگ | Facebook → تەنها تێکست
                 tg_msg = self.scraper.calendar_service.build_telegram_msg(events)
                 fb_msg = self.scraper.calendar_service.build_facebook_msg(events)
                 await self.telegram.send_message(tg_msg)
@@ -92,18 +91,30 @@ class ForexBotApp:
             current_date=current_date,
         )
 
-        await self.telegram.send_news(
-            text=telegram_msg,
-            image_url=article.get("image_url"),
-        )
+        tg_ok = False
+        fb_ok = False
 
-        await self.facebook.post(
-            text=facebook_msg,
-            image_url=article.get("image_url"),
-            link_url=url,
-        )
+        try:
+            await self.telegram.send_news(
+                text=telegram_msg,
+                image_url=article.get("image_url"),
+            )
+            tg_ok = True
+        except Exception as e:
+            logger.error(f"Telegram error: {e}")
 
-        await mark_posted(url)  # ✅ دوای ناردنی سەرکەوتوو تۆمار دەکرێت
+        try:
+            await self.facebook.post(
+                text=facebook_msg,
+                image_url=article.get("image_url"),
+                link_url=url,
+            )
+            fb_ok = True
+        except Exception as e:
+            logger.error(f"Facebook error: {e}")
+
+        if tg_ok and fb_ok:
+            await mark_posted(url)  # ✅ تەنها دوای سەرکەوتنی هەردووکیان
 
         await asyncio.sleep(self.config.POST_DELAY)
 
