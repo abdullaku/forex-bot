@@ -1,9 +1,9 @@
-from telegram import Bot
+from telegram import Bot as TelegramBot
 
 
 class TelegramService:
     def __init__(self, token: str, channel_id: int):
-        self.bot = Bot(token=token)
+        self.bot = TelegramBot(token=token)
         self.channel_id = channel_id
 
     async def send_message(self, text: str) -> None:
