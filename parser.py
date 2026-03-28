@@ -1,7 +1,7 @@
 from datetime import datetime
 
 
-class پالێوەریهەواڵService:
+class NewsParser:
     FOREX_PAIRS = [
         "EUR/USD",
         "GBP/USD",
