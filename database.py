@@ -1,6 +1,7 @@
 import os
 import logging
 import aiohttp
+from urllib.parse import quote
 
 logger = logging.getLogger(__name__)
 
@@ -36,7 +37,9 @@ class DatabaseService:
 
     async def is_posted(self, url):
         try:
-            request_url = f"{self.base_url}/rest/v1/posted_urls?url=eq.{url}"
+            # ✅ URL کۆد دەکرێت پێش ناردن بۆ Supabase
+            encoded_url = quote(url, safe="")
+            request_url = f"{self.base_url}/rest/v1/posted_urls?url=eq.{encoded_url}"
 
             async with aiohttp.ClientSession() as session:
                 async with session.get(request_url, headers=self.headers) as resp:
@@ -64,7 +67,7 @@ class DatabaseService:
                 async with session.post(
                     request_url,
                     headers=headers,
-                    json={"url": url}
+                    json={"url": url}  # ✅ JSON body — کۆدکردن پێویست نیە
                 ) as resp:
                     if resp.status not in (200, 201):
                         text = await resp.text()
