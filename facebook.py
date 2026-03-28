@@ -2,7 +2,7 @@ import re
 import logging
 import requests
 
-from ڕێکخستنی_دەق import TextFormatter
+from formatter import TextFormatter
 
 logger = logging.getLogger(__name__)
 
