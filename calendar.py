@@ -6,7 +6,7 @@ import aiohttp
 logger = logging.getLogger(__name__)
 
 
-class ڕۆژمێریئابووریService:
+class CalendarService:
     BAGHDAD_TZ = timezone(timedelta(hours=3))
 
     CURRENCY_FLAGS = {
