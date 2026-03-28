@@ -1,5 +1,7 @@
 import os
+import asyncio
 import logging
+import re
 from groq import Groq
 
 logger = logging.getLogger(__name__)
@@ -50,7 +52,9 @@ class SmartTranslator:
         )
 
     def _extract_rating(self, text: str) -> int:
-        return int("".join(filter(str.isdigit, text)) or 0)
+        # ✅ تەنها ژمارەی یەکەم دەگرێت — "7 out of 10" → 7، نەک 710
+        match = re.search(r'\d+', text)
+        return int(match.group()) if match else 0
 
     def _clean_result(self, text: str) -> str:
         text = text.replace("**", "")
@@ -60,17 +64,21 @@ class SmartTranslator:
         text = text.replace("*", "")
         return text.strip()
 
-    def _chat(self, prompt: str) -> str:
+    def _chat_sync(self, prompt: str) -> str:
         response = self.client.chat.completions.create(
             model=self.model,
             messages=[{"role": "user", "content": prompt}]
         )
         return response.choices[0].message.content.strip()
 
+    async def _chat(self, prompt: str) -> str:
+        # ✅ sync کۆد لە thread جیاوازدا دەکات — event loop بلۆک نابێت
+        return await asyncio.to_thread(self._chat_sync, prompt)
+
     async def process(self, title: str, description: str = ""):
         try:
             rating_prompt = self._create_rating_prompt(title)
-            rating_text = self._chat(rating_prompt)
+            rating_text = await self._chat(rating_prompt)
             rating = self._extract_rating(rating_text)
 
             logger.info(f"Rating: {rating}")
@@ -79,7 +87,7 @@ class SmartTranslator:
                 return None
 
             translation_prompt = self._create_translation_prompt(title, description)
-            result = self._chat(translation_prompt)
+            result = await self._chat(translation_prompt)
 
             return self._clean_result(result)
 
