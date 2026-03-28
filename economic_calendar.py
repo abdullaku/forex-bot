@@ -1,3 +1,4 @@
+import re
 import logging
 from datetime import datetime, timezone, timedelta
 
@@ -46,9 +47,13 @@ class CalendarService:
     def _extract_event_time(self, event_date: str) -> str:
         if "T" not in event_date:
             return ""
-
         event_dt = datetime.fromisoformat(event_date.replace("Z", "+00:00"))
         return event_dt.astimezone(self.BAGHDAD_TZ).strftime("%H:%M")
+
+    @staticmethod
+    def _strip_html(text: str) -> str:
+        # ✅ هەموو HTML تاگەکان دەزالێتەوە بۆ Facebook
+        return re.sub(r"<[^>]+>", "", text).strip()
 
     async def fetch_calendar(self):
         now = self._now_baghdad()
@@ -112,3 +117,13 @@ class CalendarService:
 
         result.append("\n🔔 @KurdTraderKRD")
         return result
+
+    def build_telegram_msg(self, events: list) -> str:
+        # ✅ تەنها Telegram تاگی HTML بەکاردێنێت
+        body = "\n".join(events)
+        return f"📅 <b>ڕۆژژمێری ئابووری ئەمڕۆ</b>\n\n{body}"
+
+    def build_facebook_msg(self, events: list) -> str:
+        # ✅ Facebook — بێ HTML تاگ
+        body = "\n".join(events)
+        return f"📅 ڕۆژژمێری ئابووری ئەمڕۆ\n\n{body}"
