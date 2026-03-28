@@ -2,7 +2,7 @@ import asyncio
 import logging
 from datetime import datetime
 
-from sources import SourcesManager  # ✅ چاککراو
+from manager import SourcesManager
 from translator import process_smart_news
 from database import setup_db, is_posted, mark_posted
 
