@@ -1,11 +1,11 @@
-from ڕۆژمێری_ئابووری import ڕۆژمێریئابووریService
-from سەرچاوەی_هەواڵ import سەرچاوەیهەواڵService
+from calendar import EconomicCalendar
+from news import NewsScraper as NewsService
 
 
 class NewsScraper:
     def __init__(self):
-        self.calendar_service = ڕۆژمێریئابووریService()
-        self.news_service = سەرچاوەیهەواڵService()
+        self.calendar_service = EconomicCalendar()
+        self.news_service = NewsService()
 
     async def fetch_calendar(self):
         return await self.calendar_service.fetch_calendar()
