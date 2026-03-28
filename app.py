@@ -6,7 +6,6 @@ from sources import NewsScraper
 from translator import process_smart_news
 from database import setup_db, is_posted, mark_posted
 
-# ✅ گۆڕانکاری لێرە کراوە
 from config import Config
 from formatter import TextFormatter
 from telegram import TelegramService
@@ -18,14 +17,17 @@ logger = logging.getLogger(__name__)
 class ForexBotApp:
     def __init__(self):
         self.config = Config()
+
         self.telegram = TelegramService(
             token=self.config.TOKEN,
             channel_id=self.config.CHANNEL_ID,
         )
+
         self.facebook = FacebookService(
             page_id=self.config.FACEBOOK_PAGE_ID,
             page_token=self.config.FACEBOOK_PAGE_TOKEN,
         )
+
         self.scraper = NewsScraper()
         self.last_calendar_day = ""
 
