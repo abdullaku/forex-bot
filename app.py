@@ -6,10 +6,11 @@ from sources import NewsScraper
 from translator import process_smart_news
 from database import setup_db, is_posted, mark_posted
 
-from ڕێکخستن import Config
-from ڕێکخستنی_دەق import TextFormatter
-from تێلیگرام import TelegramService
-from فەیسبووک import FacebookService
+# ✅ گۆڕانکاری لێرە کراوە
+from config import Config
+from formatter import TextFormatter
+from telegram import TelegramService
+from facebook import FacebookService
 
 logger = logging.getLogger(__name__)
 
