@@ -22,7 +22,7 @@ class NewsScraper:
 
     def __init__(self):
         self.headers = {"User-Agent": "Mozilla/5.0"}
-        self.parser = پالێوەریهەواڵService()
+        self.parser = NewsParser()
 
     async def fetch_rss(self, source_name, feed_info):
         articles = []
