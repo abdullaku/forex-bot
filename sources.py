@@ -2,7 +2,7 @@ from calendar import EconomicCalendar
 from news import NewsScraper as NewsService
 
 
-class NewsScraper:
+class SourcesManager:
     def __init__(self):
         self.calendar_service = EconomicCalendar()
         self.news_service = NewsService()
