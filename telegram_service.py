@@ -1,4 +1,7 @@
 from telegram import Bot as TelegramBot
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class TelegramService:
@@ -24,6 +27,11 @@ class TelegramService:
 
     async def send_news(self, text: str, image_url: str = None) -> None:
         if image_url:
-            await self.send_photo(image_url, text)
-        else:
-            await self.send_message(text)
+            try:
+                await self.send_photo(image_url, text)
+                return
+            except Exception as e:
+                # ✅ ئەگەر وێنەکە کار نەکرد، بێ وێنە دەنێرێت
+                logger.warning(f"Photo failed, sending text only: {e}")
+
+        await self.send_message(text)
