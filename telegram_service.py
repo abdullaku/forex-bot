@@ -25,8 +25,15 @@ class TelegramService:
             parse_mode="HTML",
         )
 
+    @staticmethod
+    def _is_direct_image(url: str) -> bool:
+        if not url:
+            return False
+        clean = url.split("?")[0].lower()
+        return any(clean.endswith(ext) for ext in (".jpg", ".jpeg", ".png", ".webp", ".gif"))
+
     async def send_news(self, text: str, image_url: str = None) -> None:
-        if image_url:
+        if image_url and self._is_direct_image(image_url):
             try:
                 await self.send_photo(image_url, text)
                 return
