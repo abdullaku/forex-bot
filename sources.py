@@ -1,10 +1,10 @@
-from calendar import EconomicCalendar
+from calendar import CalendarService
 from news import NewsScraper as NewsService
 
 
 class SourcesManager:
     def __init__(self):
-        self.calendar_service = EconomicCalendar()
+        self.calendar_service = CalendarService()
         self.news_service = NewsService()
 
     async def fetch_calendar(self):
