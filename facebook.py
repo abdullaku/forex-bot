@@ -1,6 +1,6 @@
 import re
 import logging
-import requests
+import aiohttp
 
 from formatter import TextFormatter
 
@@ -12,10 +12,9 @@ class FacebookService:
         self.page_id = page_id
         self.page_token = page_token
 
-    def post(self, text: str, image_url: str = None, link_url: str = None) -> None:
+    async def post(self, text: str, image_url: str = None, link_url: str = None) -> None:
         try:
             clean = TextFormatter.clean_text(text)
-
             clean = re.sub(r"🔗.*", "", clean).strip()
             clean = re.sub(r"\n{3,}", "\n\n", clean).strip()
 
@@ -40,7 +39,12 @@ class FacebookService:
                     "access_token": self.page_token,
                 }
 
-            requests.post(url, data=data, timeout=30)
+            # ✅ async — event loop بلۆک نابێت
+            async with aiohttp.ClientSession() as session:
+                async with session.post(url, data=data, timeout=aiohttp.ClientTimeout(total=30)) as resp:
+                    if resp.status not in (200, 201):
+                        text_resp = await resp.text()
+                        logger.error(f"FB Error {resp.status}: {text_resp}")
 
         except Exception as e:
             logger.error(f"FB Error: {e}")
