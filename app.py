@@ -10,6 +10,7 @@ from config import Config
 from formatter import TextFormatter
 from telegram_service import TelegramService
 from facebook import FacebookService
+from price_poster import PricePoster          # ✅ زیادکراو
 
 logger = logging.getLogger(__name__)
 
@@ -30,6 +31,7 @@ class ForexBotApp:
 
         self.scraper = SourcesManager()  # ✅ چاككراو
         self.last_calendar_day = ""
+        self.price_poster = PricePoster(self.telegram)  # ✅ زیادکراو
 
     def get_now(self) -> datetime:
         return datetime.now(self.config.BAGHDAD_TZ)
@@ -130,6 +132,8 @@ class ForexBotApp:
 
     async def run(self) -> None:
         await self.setup()
+
+        asyncio.create_task(self.price_poster.run())  # ✅ زیادکراو
 
         while True:
             try:
