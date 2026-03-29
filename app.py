@@ -10,7 +10,8 @@ from config import Config
 from formatter import TextFormatter
 from telegram_service import TelegramService
 from facebook import FacebookService
-from price_poster import PricePoster          # ✅ زیادکراو
+from price_poster import PricePoster
+from dinar_poster import DinarPoster          # ✅ زیادکراو — نرخی نا فەرمی دینار
 
 logger = logging.getLogger(__name__)
 
@@ -29,9 +30,10 @@ class ForexBotApp:
             page_token=self.config.FACEBOOK_PAGE_TOKEN,
         )
 
-        self.scraper = SourcesManager()  # ✅ چاككراو
+        self.scraper = SourcesManager()
         self.last_calendar_day = ""
-        self.price_poster = PricePoster(self.telegram)  # ✅ زیادکراو
+        self.price_poster = PricePoster(self.telegram)
+        self.dinar_poster = DinarPoster(self.telegram)  # ✅ زیادکراو
 
     def get_now(self) -> datetime:
         return datetime.now(self.config.BAGHDAD_TZ)
@@ -116,7 +118,7 @@ class ForexBotApp:
             logger.error(f"Facebook error: {e}")
 
         if tg_ok or fb_ok:
-            await mark_posted(url)  # ✅ ئەگەر یەکێکیان سەرکەوت
+            await mark_posted(url)
 
         await asyncio.sleep(self.config.POST_DELAY)
 
@@ -133,7 +135,8 @@ class ForexBotApp:
     async def run(self) -> None:
         await self.setup()
 
-        asyncio.create_task(self.price_poster.run())  # ✅ زیادکراو
+        asyncio.create_task(self.price_poster.run())
+        asyncio.create_task(self.dinar_poster.run())   # ✅ زیادکراو
 
         while True:
             try:
