@@ -115,8 +115,8 @@ class ForexBotApp:
         except Exception as e:
             logger.error(f"Facebook error: {e}")
 
-        if tg_ok and fb_ok:
-            await mark_posted(url)  # ✅ تەنها دوای سەرکەوتنی هەردووکیان
+        if tg_ok or fb_ok:
+            await mark_posted(url)  # ✅ ئەگەر یەکێکیان سەرکەوت
 
         await asyncio.sleep(self.config.POST_DELAY)
 
