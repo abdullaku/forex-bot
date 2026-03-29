@@ -2,12 +2,14 @@ import asyncio
 import logging
 from datetime import datetime
 
-import yfinance as yf
+import aiohttp  # ✅ بەجێی yfinance
 
 from config import Config
 from telegram_service import TelegramService
 
 logger = logging.getLogger(__name__)
+
+YAHOO_URL = "https://query1.finance.yahoo.com/v8/finance/chart/{symbol}?interval=1m&range=1d"
 
 
 class PricePoster:
@@ -25,15 +27,26 @@ class PricePoster:
 
     # ── وەرگرتنی نرخ ──────────────────────────────────────────────────────────
 
-    def _fetch_prices(self) -> tuple[float, float]:
-        """نرخ لە yfinance وەردەگرێت (ئەمە بلۆکینگە، لە executor دەخرێتە کار)."""
-        gold_info = yf.Ticker(self.GOLD_TICKER).fast_info
-        brent_info = yf.Ticker(self.BRENT_TICKER).fast_info
-        return gold_info.last_price, brent_info.last_price
+    async def _fetch_price(self, symbol: str) -> float | None:
+        """✅ ڕاستەوخۆ لە Yahoo Finance — بێ yfinance"""
+        url = YAHOO_URL.format(symbol=symbol)
+        try:
+            async with aiohttp.ClientSession(headers={"User-Agent": "Mozilla/5.0"}) as session:
+                async with session.get(url, timeout=aiohttp.ClientTimeout(total=10)) as resp:
+                    if resp.status != 200:
+                        return None
+                    data = await resp.json()
+                    return data["chart"]["result"][0]["meta"].get("regularMarketPrice")
+        except Exception as e:
+            logger.error(f"Price fetch error {symbol}: {e}")
+            return None
 
     async def get_prices(self) -> tuple[float, float]:
-        loop = asyncio.get_event_loop()
-        return await loop.run_in_executor(None, self._fetch_prices)
+        gold, brent = await asyncio.gather(
+            self._fetch_price(self.GOLD_TICKER),
+            self._fetch_price(self.BRENT_TICKER),
+        )
+        return gold, brent
 
     # ── دروستکردنی پۆست ───────────────────────────────────────────────────────
 
