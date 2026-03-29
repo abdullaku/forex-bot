@@ -11,3 +11,5 @@ class Config:
     CHECK_INTERVAL = 300
     POST_DELAY = 10
     BAGHDAD_TZ = timezone(timedelta(hours=3))
+
+    CHANNEL_USERNAME = os.environ.get("CHANNEL_USERNAME", "@KurdTraderKRD")  # ✅ زیادکراو
