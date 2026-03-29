@@ -47,4 +47,4 @@ class FacebookService:
                         logger.error(f"FB Error {resp.status}: {text_resp}")
 
         except Exception as e:
-            logger.error(f"FB Error: {e}")
+            logger.error(f"FB Error: {type(e).__name__}: {e}")
