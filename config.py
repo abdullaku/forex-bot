@@ -12,4 +12,7 @@ class Config:
     POST_DELAY = 10
     BAGHDAD_TZ = timezone(timedelta(hours=3))
 
-    CHANNEL_USERNAME = os.environ.get("CHANNEL_USERNAME", "@KurdTraderKRD")  # ✅ زیادکراو
+    CHANNEL_USERNAME = os.environ.get("CHANNEL_USERNAME", "@KurdTraderKRD")
+
+    # ── DinarAPI ──────────────────────────────────────────────────────────────
+    DINAR_API_TOKEN = os.environ.get("DINAR_API_TOKEN", "")  # ✅ توکێنی DinarAPI
