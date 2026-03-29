@@ -1,5 +1,6 @@
 from telegram import Bot as TelegramBot
 import logging
+import aiohttp
 
 logger = logging.getLogger(__name__)
 
@@ -26,19 +27,28 @@ class TelegramService:
         )
 
     @staticmethod
-    def _is_direct_image(url: str) -> bool:
+    async def _is_valid_image(url: str) -> bool:
+        """✅ content-type پشکنێت — نەک تەنها extension"""
         if not url:
             return False
-        clean = url.split("?")[0].lower()
-        return any(clean.endswith(ext) for ext in (".jpg", ".jpeg", ".png", ".webp", ".gif"))
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.head(
+                    url,
+                    timeout=aiohttp.ClientTimeout(total=5),
+                    allow_redirects=True,
+                ) as resp:
+                    content_type = resp.headers.get("Content-Type", "")
+                    return resp.status == 200 and "image" in content_type
+        except Exception:
+            return False
 
     async def send_news(self, text: str, image_url: str = None) -> None:
-        if image_url and self._is_direct_image(image_url):
+        if image_url and await self._is_valid_image(image_url):
             try:
                 await self.send_photo(image_url, text)
                 return
             except Exception as e:
-                # ✅ ئەگەر وێنەکە کار نەکرد، بێ وێنە دەنێرێت
                 logger.warning(f"Photo failed, sending text only: {e}")
 
         await self.send_message(text)
