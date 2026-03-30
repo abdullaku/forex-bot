@@ -37,7 +37,6 @@ class DinarPoster:
                         logger.error(f"DinarAPI status {resp.status} body={text}")
                         return None, None
                     data = await resp.json()
-                    
                     return data.get("value"), data.get("created_at")
         except Exception as e:
             logger.error(f"DinarAPI fetch error: {e}")
