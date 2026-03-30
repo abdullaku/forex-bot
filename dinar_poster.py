@@ -9,7 +9,8 @@ from telegram_service import TelegramService
 
 logger = logging.getLogger(__name__)
 
-DINAR_API_URL = "https://dinarapi.hediworks.site/api/v2/get-price"
+DINAR_API_BASE = "https://dinarapi.hediworks.site/api/v2/get-price"
+DINAR_API_PARAMS = {"id": "5", "location": "erbil"}
 
 
 class DinarPoster:
@@ -25,23 +26,20 @@ class DinarPoster:
     async def _fetch_dinar_price(self) -> tuple[float | None, str | None]:
         token = self.config.DINAR_API_TOKEN
         headers = {"Authorization": f"Bearer {token}"}
-
         try:
             async with aiohttp.ClientSession() as session:
                 async with session.get(
-                    DINAR_API_URL,
+                    DINAR_API_BASE,
+                    params=DINAR_API_PARAMS,
                     headers=headers,
-                    params={"id": 5, "location": "erbil"},
                     timeout=aiohttp.ClientTimeout(total=10),
                 ) as resp:
                     if resp.status != 200:
                         text = await resp.text()
                         logger.error(f"DinarAPI status {resp.status} body={text}")
                         return None, None
-
                     data = await resp.json()
                     return data.get("value"), data.get("created_at")
-
         except Exception as e:
             logger.error(f"DinarAPI fetch error: {e}")
             return None, None
@@ -62,6 +60,7 @@ class DinarPoster:
         )
 
     def _is_working_hours(self, now: datetime) -> bool:
+        """کاتژمێر 8 بەیانی تا 12 شەو"""
         return 8 <= now.hour < 24
 
     async def post_dinar(self) -> None:
@@ -70,16 +69,15 @@ class DinarPoster:
             if not value:
                 logger.warning("⚠️ DinarPoster: نرخ نەگەیشت")
                 return
-
             now = datetime.now(self.config.BAGHDAD_TZ)
             msg = self.build_message(value, now)
             await self.telegram.send_message(msg)
             logger.info(f"✅ DinarPoster: 100$ = {value:,.0f} IQD")
-
         except Exception as e:
             logger.error(f"❌ DinarPoster error: {e}")
 
     async def run(self) -> None:
+        """هەر کاتژمێرێک نرخ دەنێرێت — چاوەڕوانی تا :00 دقیقە"""
         logger.info("💵 DinarPoster: دەستی پێکرد")
         while True:
             now = datetime.now(self.config.BAGHDAD_TZ)
