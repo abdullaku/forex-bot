@@ -32,7 +32,7 @@ class ForexBotApp:
 
         self.scraper = SourcesManager()
         self.last_calendar_day = ""
-        self.price_poster = PricePoster(self.telegram)
+        self.price_poster = PricePoster(self.telegram, self.facebook)
         self.dinar_poster = DinarPoster(self.telegram)  # ✅ زیادکراو
 
     def get_now(self) -> datetime:
