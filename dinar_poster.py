@@ -33,7 +33,8 @@ class DinarPoster:
                     timeout=aiohttp.ClientTimeout(total=10),
                 ) as resp:
                     if resp.status != 200:
-                        logger.error(f"DinarAPI status {resp.status}")
+                        text = await resp.text()
+                        logger.error(f"DinarAPI status {resp.status} body={text}")
                         return None, None
                     data = await resp.json()
                     
