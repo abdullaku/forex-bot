@@ -9,13 +9,12 @@ from telegram_service import TelegramService
 
 logger = logging.getLogger(__name__)
 
-DINAR_API_BASE = "https://dinarapi.hediworks.site/api/v2/get-price"
-DINAR_API_PARAMS = {"id": "5", "location": "erbil"}
+DINAR_API_URL = "https://dinarapi.hediworks.site/api/v2/nrxi-dolar"
 
 
 class DinarPoster:
     """
-    هەر کاتژمێرێک نرخی نا فەرمی 100 دۆلار بە دینار لە بازاڕی هەولێر دەنێرێت.
+    هەر کاتژمێرێک نرخی 100 دۆلار بە دینار دەنێرێت.
     کاتژمێر 8 بەیانی تا 12 شەو (UTC+3).
     """
 
@@ -26,20 +25,24 @@ class DinarPoster:
     async def _fetch_dinar_price(self) -> tuple[float | None, str | None]:
         token = self.config.DINAR_API_TOKEN
         headers = {"Authorization": f"Bearer {token}"}
+
         try:
             async with aiohttp.ClientSession() as session:
                 async with session.get(
-                    DINAR_API_BASE,
-                    params=DINAR_API_PARAMS,
+                    DINAR_API_URL,
                     headers=headers,
                     timeout=aiohttp.ClientTimeout(total=10),
                 ) as resp:
+                    text = await resp.text()
+
                     if resp.status != 200:
-                        text = await resp.text()
                         logger.error(f"DinarAPI status {resp.status} body={text}")
                         return None, None
+
                     data = await resp.json()
-                    return data.get("value"), data.get("created_at")
+                    inner = data.get("data", {})
+                    return inner.get("value"), inner.get("created_at")
+
         except Exception as e:
             logger.error(f"DinarAPI fetch error: {e}")
             return None, None
@@ -51,8 +54,7 @@ class DinarPoster:
         one_dollar = value / 100
 
         return (
-            "💵 نرخی نا فەرمی دینار — هەولێر\n\n"
-            f"🏙️ شار: هەولێر\n"
+            "💵 نرخی دۆلار بە دینار\n\n"
             f"💲 100 دۆلار = {value:,.0f} دینار\n"
             f"💲 1 دۆلار  = {one_dollar:,.0f} دینار\n\n"
             f"🕐 {time_str} | {date_str}\n"
@@ -60,7 +62,6 @@ class DinarPoster:
         )
 
     def _is_working_hours(self, now: datetime) -> bool:
-        """کاتژمێر 8 بەیانی تا 12 شەو"""
         return 8 <= now.hour < 24
 
     async def post_dinar(self) -> None:
@@ -69,15 +70,16 @@ class DinarPoster:
             if not value:
                 logger.warning("⚠️ DinarPoster: نرخ نەگەیشت")
                 return
+
             now = datetime.now(self.config.BAGHDAD_TZ)
             msg = self.build_message(value, now)
             await self.telegram.send_message(msg)
             logger.info(f"✅ DinarPoster: 100$ = {value:,.0f} IQD")
+
         except Exception as e:
             logger.error(f"❌ DinarPoster error: {e}")
 
     async def run(self) -> None:
-        """هەر کاتژمێرێک نرخ دەنێرێت — چاوەڕوانی تا :00 دقیقە"""
         logger.info("💵 DinarPoster: دەستی پێکرد")
         while True:
             now = datetime.now(self.config.BAGHDAD_TZ)
