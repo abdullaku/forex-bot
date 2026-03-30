@@ -9,8 +9,7 @@ from telegram_service import TelegramService
 
 logger = logging.getLogger(__name__)
 
-# item id=5 → 100 دۆلار  |  location=erbil → هەولێر
-DINAR_API_URL = "https://dinarapi.hediworks.site/api/v2/get-price?id=5&location=erbil"
+DINAR_API_URL = "https://dinarapi.hediworks.site/api/v2/nrxi-dolar"
 
 
 class DinarPoster:
@@ -37,7 +36,8 @@ class DinarPoster:
                         logger.error(f"DinarAPI status {resp.status}")
                         return None, None
                     data = await resp.json()
-                    return data.get("value"), data.get("created_at")
+                    inner = data.get("data", {})
+                    return inner.get("value"), inner.get("created_at")
         except Exception as e:
             logger.error(f"DinarAPI fetch error: {e}")
             return None, None
