@@ -1,7 +1,7 @@
 import asyncio
 import logging
 import re
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import requests
 
@@ -67,25 +67,35 @@ class DinarPoster:
     async def _fetch_dinar_price(self) -> tuple[float | None, str | None]:
         return await asyncio.to_thread(self._fetch_dinar_price_sync)
 
-    def build_message(self, value: float, now: datetime, created_at: str | None) -> str:
+    def build_message(self, value: float, now: datetime) -> str:
         time_str = now.strftime("%H:%M")
         date_str = now.strftime("%d/%m/%Y")
         channel = self.config.CHANNEL_USERNAME
-        one_dollar = value / 100
-        freshness = f"\n🗂️ API Time: {created_at}" if created_at else ""
+        one_dollar = round(value / 100)
 
         return (
-            "💵 نرخی دۆلار بە دینار\n\n"
+            "نرخی دۆلاری نافەرمی لە\n"
+            "💵بازاڕەکانی هەرێمی کوردستان\n\n"
             f"💲 100 دۆلار = {value:,.0f} دینار\n"
-            f"💲 1 دۆلار  = {one_dollar:,.0f} دینار"
-            f"{freshness}\n\n"
+            f"💲 1 دۆلار  = {one_dollar:,.0f} دینار\n\n"
             f"🕐 {time_str} | {date_str}\n"
             f"🔔 {channel}"
         )
 
     def _is_working_hours(self, now: datetime) -> bool:
-        return True  # بۆ debug
-        # return 8 <= now.hour < 24
+        return 8 <= now.hour < 24
+
+    def _seconds_until_next_half_hour(self, now: datetime) -> int:
+        if now.minute < 30:
+            next_run = now.replace(minute=30, second=0, microsecond=0)
+        else:
+            next_run = (now + timedelta(hours=1)).replace(
+                minute=0,
+                second=0,
+                microsecond=0,
+            )
+
+        return max(int((next_run - now).total_seconds()), 1)
 
     async def post_dinar(self) -> None:
         try:
@@ -96,7 +106,7 @@ class DinarPoster:
                 return
 
             now = datetime.now(self.config.BAGHDAD_TZ)
-            msg = self.build_message(value, now, created_at)
+            msg = self.build_message(value, now)
             await self.telegram.send_message(msg)
 
             logger.info(
@@ -111,9 +121,18 @@ class DinarPoster:
 
         while True:
             now = datetime.now(self.config.BAGHDAD_TZ)
+
+            wait_seconds = self._seconds_until_next_half_hour(now)
+            logger.info(
+                f"⏳ DinarPoster: next run in {wait_seconds}s "
+                f"at {now.strftime('%Y-%m-%d %H:%M:%S')}"
+            )
+            await asyncio.sleep(wait_seconds)
+
+            now = datetime.now(self.config.BAGHDAD_TZ)
             logger.info(f"⏱️ DinarPoster tick: {now.strftime('%Y-%m-%d %H:%M:%S')}")
 
             if self._is_working_hours(now):
                 await self.post_dinar()
-
-            await asyncio.sleep(60)
+            else:
+                logger.info("🛌 DinarPoster: لە کاتی کارکردن نییە")
