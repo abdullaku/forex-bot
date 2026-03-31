@@ -9,7 +9,7 @@ from telegram_service import TelegramService
 
 logger = logging.getLogger(__name__)
 
-BAGHDAD_PRICE_URL = "https://dinarapi.hediworks.site/api/v2/get-price?id=5&location=baghdad"
+DINAR_API_URL = "https://dinarapi.hediworks.site/api/v2/nrxi-dolar"
 
 
 class DinarPoster:
@@ -26,29 +26,30 @@ class DinarPoster:
 
     def _fetch_dinar_price_sync(self) -> tuple[float | None, str | None]:
         try:
-            logger.info(f"🌐 Trying Baghdad endpoint => {BAGHDAD_PRICE_URL}")
+            logger.info(f"🌐 Trying endpoint => {DINAR_API_URL}")
 
             response = requests.get(
-                BAGHDAD_PRICE_URL,
+                DINAR_API_URL,
                 headers=self._headers(),
                 timeout=10,
             )
 
             logger.info(
-                f"📡 Baghdad status={response.status_code} url={response.url}"
+                f"📡 status={response.status_code} url={response.url}"
             )
 
             if response.status_code != 200:
-                logger.error(f"Baghdad API body={response.text}")
+                logger.error(f"API body={response.text}")
                 return None, None
 
             data = response.json()
-            logger.info(f"📦 Baghdad API json={data}")
+            logger.info(f"📦 API json={data}")
 
-            return data.get("value"), data.get("created_at")
+            inner = data.get("data", {})
+            return inner.get("value"), inner.get("created_at")
 
         except Exception as e:
-            logger.error(f"❌ Baghdad API error: {e}")
+            logger.error(f"❌ API error: {e}")
             return None, None
 
     async def _fetch_dinar_price(self) -> tuple[float | None, str | None]:
@@ -63,7 +64,6 @@ class DinarPoster:
 
         return (
             "💵 نرخی دۆلار بە دینار\n\n"
-            f"🏙️ شار: بەغدا\n"
             f"💲 100 دۆلار = {value:,.0f} دینار\n"
             f"💲 1 دۆلار  = {one_dollar:,.0f} دینار"
             f"{freshness}\n\n"
@@ -80,7 +80,7 @@ class DinarPoster:
             value, created_at = await self._fetch_dinar_price()
 
             if not value:
-                logger.warning("⚠️ DinarPoster: نرخی بەغدا نەگەیشت")
+                logger.warning("⚠️ DinarPoster: نرخ نەگەیشت")
                 return
 
             now = datetime.now(self.config.BAGHDAD_TZ)
@@ -88,7 +88,7 @@ class DinarPoster:
             await self.telegram.send_message(msg)
 
             logger.info(
-                f"✅ DinarPoster: Baghdad 100$ = {value:,.0f} IQD | created_at={created_at}"
+                f"✅ DinarPoster: 100$ = {value:,.0f} IQD | created_at={created_at}"
             )
 
         except Exception as e:
