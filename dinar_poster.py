@@ -35,21 +35,13 @@ DINAR_HOME_URL = "https://dinarapi.hediworks.site"
 
 
 class DinarPoster:
-    """
-    هەر خولەکێک هەوڵ دەدات نرخی 100 دۆلار بۆ هەولێر/ئه‌ربیل بهێنێت.
-    """
-
     def __init__(self, telegram: TelegramService):
         self.telegram = telegram
         self.config = Config()
 
     def _headers(self, with_auth: bool = True) -> dict:
         headers = {
-            "User-Agent": (
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                "AppleWebKit/537.36 (KHTML, like Gecko) "
-                "Chrome/123.0.0.0 Safari/537.36"
-            ),
+            "User-Agent": "Mozilla/5.0",
             "Accept": "application/json, text/html;q=0.9,*/*;q=0.8",
         }
         if with_auth:
@@ -57,24 +49,20 @@ class DinarPoster:
         return headers
 
     def _fetch_from_endpoint(
-        self, url: str, response_format: str, use_auth: bool
+        self, name: str, url: str, response_format: str, use_auth: bool
     ) -> tuple[float | None, str | None]:
         try:
-            logger.info(f"🌐 Trying => {url}")
             response = requests.get(
                 url,
                 headers=self._headers(with_auth=use_auth),
                 timeout=10,
             )
 
-            logger.info(f"📡 status={response.status_code} url={response.url}")
-
             if response.status_code != 200:
-                logger.error(f"body={response.text}")
+                logger.warning(f"❌ {name} failed: status={response.status_code}")
                 return None, None
 
             data = response.json()
-            logger.info(f"📦 json={data}")
 
             if response_format == "flat":
                 return data.get("value"), data.get("created_at")
@@ -86,21 +74,19 @@ class DinarPoster:
             return None, None
 
         except Exception as e:
-            logger.error(f"fetch error: {e}")
+            logger.warning(f"❌ {name} error: {e}")
             return None, None
 
     def _try_scrape_homepage(self) -> tuple[float | None, str | None]:
         try:
-            logger.info(f"🌐 Trying homepage scrape => {DINAR_HOME_URL}")
             response = requests.get(
                 DINAR_HOME_URL,
                 headers=self._headers(with_auth=False),
                 timeout=10,
             )
-            logger.info(f"📡 homepage status={response.status_code} url={response.url}")
 
             if response.status_code != 200:
-                logger.error(f"homepage body={response.text[:500]}")
+                logger.warning(f"❌ homepage scrape failed: status={response.status_code}")
                 return None, None
 
             html = response.text
@@ -113,44 +99,39 @@ class DinarPoster:
             if m:
                 value = float(m.group(1).replace(",", ""))
                 created_at = m.group(2)
-                logger.info(f"✅ homepage scrape success via json block: value={value}")
                 return value, created_at
 
             m2 = re.search(r'100\s*دۆلار\s*.*?([\d,]{3,})', html, re.S)
             if m2:
                 value = float(m2.group(1).replace(",", ""))
-                logger.info(f"✅ homepage scrape success via text block: value={value}")
                 return value, None
 
-            logger.error("homepage scrape failed: could not find dollar price")
+            logger.warning("❌ homepage scrape failed: no price found")
             return None, None
 
         except Exception as e:
-            logger.error(f"homepage scrape error: {e}")
+            logger.warning(f"❌ homepage scrape error: {e}")
             return None, None
 
-    def _fetch_dinar_price_sync(self) -> tuple[float | None, str | None]:
+    def _fetch_dinar_price_sync(self) -> tuple[float | None, str | None, str | None]:
         for endpoint in DINAR_ENDPOINTS:
-            logger.info(f"🔎 Trying endpoint: {endpoint['name']}")
             value, created_at = self._fetch_from_endpoint(
+                endpoint["name"],
                 endpoint["url"],
                 endpoint["format"],
                 endpoint["auth"],
             )
             if value:
-                logger.info(f"✅ Success via {endpoint['name']}")
-                return value, created_at
+                return value, created_at, endpoint["name"]
 
-        # ئەگەر تەنها هەولێر دەتەوێت و scrape مەبە، ئەم بەشە بسڕەوە
+        logger.info("🔁 Falling back to homepage scrape")
         value, created_at = self._try_scrape_homepage()
         if value:
-            logger.info("✅ Success via homepage scrape")
-            return value, created_at
+            return value, created_at, "homepage-scrape"
 
-        logger.warning("⚠️ DinarPoster: هەموو ڕێگاکان fail بوون")
-        return None, None
+        return None, None, None
 
-    async def _fetch_dinar_price(self) -> tuple[float | None, str | None]:
+    async def _fetch_dinar_price(self) -> tuple[float | None, str | None, str | None]:
         return await asyncio.to_thread(self._fetch_dinar_price_sync)
 
     def build_message(self, value: float, now: datetime, created_at: str | None) -> str:
@@ -158,6 +139,7 @@ class DinarPoster:
         date_str = now.strftime("%d/%m/%Y")
         channel = self.config.CHANNEL_USERNAME
         one_dollar = value / 100
+
         freshness = f"\n🗂️ API Time: {created_at}" if created_at else ""
 
         return (
@@ -171,12 +153,11 @@ class DinarPoster:
 
     def _is_working_hours(self, now: datetime) -> bool:
         return True  # بۆ debug
-        # return 8 <= now.hour < 24  # بۆ production
+        # return 8 <= now.hour < 24
 
     async def post_dinar(self) -> None:
         try:
-            logger.info("🚀 DinarPoster: دەچێت بۆ وەرگرتنی نرخ")
-            value, created_at = await self._fetch_dinar_price()
+            value, created_at, source = await self._fetch_dinar_price()
 
             if not value:
                 logger.warning("⚠️ DinarPoster: نرخ نەگەیشت")
@@ -185,7 +166,10 @@ class DinarPoster:
             now = datetime.now(self.config.BAGHDAD_TZ)
             msg = self.build_message(value, now, created_at)
             await self.telegram.send_message(msg)
-            logger.info(f"✅ DinarPoster: 100$ = {value:,.0f} IQD | created_at={created_at}")
+
+            logger.info(
+                f"✅ DinarPoster: 100$ = {value:,.0f} IQD | source={source} | created_at={created_at}"
+            )
 
         except Exception as e:
             logger.error(f"❌ DinarPoster error: {e}")
