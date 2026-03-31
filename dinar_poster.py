@@ -74,8 +74,8 @@ class DinarPoster:
         one_dollar = round(value / 100)
 
         return (
-            "نرخی دۆلاری نافەرمی لە\n"
-            "💵بازاڕەکانی هەرێمی کوردستان\n\n"
+            "💵 نرخی دۆلاری نافەرمی\n"
+            "لە بازاڕەکانی هەرێمی کوردستان\n\n"
             f"💲 100 دۆلار = {value:,.0f} دینار\n"
             f"💲 1 دۆلار  = {one_dollar:,.0f} دینار\n\n"
             f"🕐 {time_str} | {date_str}\n"
@@ -123,16 +123,18 @@ class DinarPoster:
             now = datetime.now(self.config.BAGHDAD_TZ)
 
             wait_seconds = self._seconds_until_next_half_hour(now)
+            next_run_time = now + timedelta(seconds=wait_seconds)
+
             logger.info(
-                f"⏳ DinarPoster: next run in {wait_seconds}s "
-                f"at {now.strftime('%Y-%m-%d %H:%M:%S')}"
+                f"⏳ Next run in {wait_seconds}s at {next_run_time.strftime('%Y-%m-%d %H:%M:%S')}"
             )
+
             await asyncio.sleep(wait_seconds)
 
             now = datetime.now(self.config.BAGHDAD_TZ)
-            logger.info(f"⏱️ DinarPoster tick: {now.strftime('%Y-%m-%d %H:%M:%S')}")
+            logger.info(f"⏱️ Tick: {now.strftime('%Y-%m-%d %H:%M:%S')}")
 
             if self._is_working_hours(now):
                 await self.post_dinar()
             else:
-                logger.info("🛌 DinarPoster: لە کاتی کارکردن نییە")
+                logger.info("🛌 لە کاتی کارکردن نییە")
