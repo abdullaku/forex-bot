@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import re
 from datetime import datetime
 
 import requests
@@ -9,7 +10,7 @@ from telegram_service import TelegramService
 
 logger = logging.getLogger(__name__)
 
-DINAR_API_URL = "https://dinarapi.hediworks.site/api/v2/nrxi-dolar"
+DINAR_HOME_URL = "https://dinarapi.hediworks.site"
 
 
 class DinarPoster:
@@ -20,36 +21,47 @@ class DinarPoster:
     def _headers(self) -> dict:
         return {
             "User-Agent": "Mozilla/5.0",
-            "Accept": "application/json, text/html;q=0.9,*/*;q=0.8",
-            "Authorization": f"Bearer {self.config.DINAR_API_TOKEN}",
+            "Accept": "text/html,application/json;q=0.9,*/*;q=0.8",
         }
 
     def _fetch_dinar_price_sync(self) -> tuple[float | None, str | None]:
         try:
-            logger.info(f"🌐 Trying endpoint => {DINAR_API_URL}")
+            logger.info(f"🌐 Trying homepage => {DINAR_HOME_URL}")
 
             response = requests.get(
-                DINAR_API_URL,
+                DINAR_HOME_URL,
                 headers=self._headers(),
                 timeout=10,
             )
 
-            logger.info(
-                f"📡 status={response.status_code} url={response.url}"
-            )
+            logger.info(f"📡 status={response.status_code} url={response.url}")
 
             if response.status_code != 200:
-                logger.error(f"API body={response.text}")
+                logger.error(f"Homepage body={response.text[:300]}")
                 return None, None
 
-            data = response.json()
-            logger.info(f"📦 API json={data}")
+            html = response.text
 
-            inner = data.get("data", {})
-            return inner.get("value"), inner.get("created_at")
+            m = re.search(
+                r'"data"\s*:\s*\{\s*"value"\s*:\s*"?([\d,]+)"?\s*,\s*"created_at"\s*:\s*"([^"]+)"',
+                html,
+                re.S,
+            )
+            if m:
+                value = float(m.group(1).replace(",", ""))
+                created_at = m.group(2)
+                return value, created_at
+
+            m2 = re.search(r'100\s*دۆلار\s*.*?([\d,]{3,})', html, re.S)
+            if m2:
+                value = float(m2.group(1).replace(",", ""))
+                return value, None
+
+            logger.error("Could not find dollar price in homepage")
+            return None, None
 
         except Exception as e:
-            logger.error(f"❌ API error: {e}")
+            logger.error(f"❌ Homepage scrape error: {e}")
             return None, None
 
     async def _fetch_dinar_price(self) -> tuple[float | None, str | None]:
@@ -73,7 +85,7 @@ class DinarPoster:
 
     def _is_working_hours(self, now: datetime) -> bool:
         return True  # بۆ debug
-        # return 8 <= now.hour < 24  # بۆ production
+        # return 8 <= now.hour < 24
 
     async def post_dinar(self) -> None:
         try:
@@ -88,7 +100,7 @@ class DinarPoster:
             await self.telegram.send_message(msg)
 
             logger.info(
-                f"✅ DinarPoster: 100$ = {value:,.0f} IQD | created_at={created_at}"
+                f"✅ DinarPoster: 100$ = {value:,.0f} IQD | source=homepage-scrape | created_at={created_at}"
             )
 
         except Exception as e:
