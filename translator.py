@@ -1,7 +1,6 @@
 import os
 import asyncio
 import logging
-import re
 from groq import Groq
 
 logger = logging.getLogger(__name__)
@@ -10,7 +9,6 @@ logger = logging.getLogger(__name__)
 class TranslatorConfig:
     API_KEY = os.getenv("GROQ_API_KEY")
     MODEL = "llama-3.3-70b-versatile"
-    MIN_RATING = 6
 
     @classmethod
     def validate(cls):
@@ -25,36 +23,30 @@ class SmartTranslator:
     def __init__(self):
         self.client = Groq(api_key=TranslatorConfig.API_KEY)
         self.model = TranslatorConfig.MODEL
-        self.min_rating = TranslatorConfig.MIN_RATING
 
-    def _create_rating_prompt(self, title: str) -> str:
-        return (
-            f"Rate this Forex news from 1 to 10: {title}. "
-            f"Return only one number."
-        )
-
-    def _create_translation_prompt(self, title: str, description: str = "") -> str:
+    def _create_prompt(self, title: str, description: str = "") -> str:
         content = f"{title}\n{description}".strip()
 
         return (
-            "Translate and summarize this Forex news into Kurdish Sorani.\n\n"
-            f"News:\n{content}\n\n"
-            "Instructions:\n"
+            "You are a Forex news editor for a Kurdish trading channel.\n\n"
+            "Read this news carefully:\n"
+            f"{content}\n\n"
+            "STEP 1 — Decide if this news is DIRECTLY relevant to Forex traders:\n"
+            "- RELEVANT: news about currency pairs (EUR/USD, GBP/USD, USD/JPY etc.), "
+            "gold (XAU/USD), oil prices, central bank decisions (Fed, ECB, BOE, BOJ), "
+            "inflation data, interest rates, NFP, CPI, GDP that directly moves Forex markets.\n"
+            "- NOT RELEVANT: general stock market news, company earnings, crypto, "
+            "sports, politics without direct Forex impact, general business news.\n\n"
+            "STEP 2 — If NOT RELEVANT, reply with exactly: SKIP\n\n"
+            "STEP 3 — If RELEVANT, translate and summarize into Kurdish Sorani:\n"
             "1. Write one strong Kurdish title.\n"
-            "2. Write one short Kurdish summary.\n"
-            "3. Kurdish Sorani only.\n"
-            "4. No English.\n"
-            "5. No markdown.\n"
-            "6. Do not use ** or * or bullets or hashtags.\n"
-            "7. Plain clean text only.\n"
-            "8. Output format must be:\n"
+            "2. Write one short Kurdish summary (2-3 sentences max).\n"
+            "3. Kurdish Sorani only. No English.\n"
+            "4. No markdown. No ** or * or bullets or hashtags.\n"
+            "5. Plain clean text only.\n"
+            "6. Output format must be exactly:\n"
             "TITLE\n\nSUMMARY"
         )
-
-    def _extract_rating(self, text: str) -> int:
-        # ✅ تەنها ژمارەی یەکەم دەگرێت — "7 out of 10" → 7، نەک 710
-        match = re.search(r'\d+', text)
-        return int(match.group()) if match else 0
 
     def _clean_result(self, text: str) -> str:
         text = text.replace("**", "")
@@ -72,24 +64,22 @@ class SmartTranslator:
         return response.choices[0].message.content.strip()
 
     async def _chat(self, prompt: str) -> str:
-        # ✅ sync کۆد لە thread جیاوازدا دەکات — event loop بلۆک نابێت
         return await asyncio.to_thread(self._chat_sync, prompt)
 
     async def process(self, title: str, description: str = ""):
         try:
-            rating_prompt = self._create_rating_prompt(title)
-            rating_text = await self._chat(rating_prompt)
-            rating = self._extract_rating(rating_text)
+            prompt = self._create_prompt(title, description)
+            result = await self._chat(prompt)
 
-            logger.info(f"Rating: {rating}")
-
-            if rating < self.min_rating:
+            # ئەگەر AI گوتی SKIP — هەواڵەکە پەیوەندی بە فۆرێکس نییە
+            result_upper = result.strip().upper()
+            if result_upper == "SKIP" or result_upper.startswith("SKIP"):
+                logger.info(f"⏭️ Skipped (not Forex relevant): {title[:60]}")
                 return None
 
-            translation_prompt = self._create_translation_prompt(title, description)
-            result = await self._chat(translation_prompt)
-
-            return self._clean_result(result)
+            cleaned = self._clean_result(result)
+            logger.info(f"✅ Translated: {title[:60]}")
+            return cleaned
 
         except Exception as e:
             logger.error(f"Translator error: {e}")
@@ -99,5 +89,5 @@ class SmartTranslator:
 _translator = SmartTranslator()
 
 
-async def process_smart_news(title, description=""):
+async def process_smart_news(title: str, description: str = ""):
     return await _translator.process(title, description)
