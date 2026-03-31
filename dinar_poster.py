@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import math
 import re
 from datetime import datetime, timedelta
 
@@ -17,6 +18,7 @@ class DinarPoster:
     def __init__(self, telegram: TelegramService):
         self.telegram = telegram
         self.config = Config()
+        self._last_post_slot = None
 
     def _headers(self) -> dict:
         return {
@@ -26,15 +28,11 @@ class DinarPoster:
 
     def _fetch_dinar_price_sync(self) -> tuple[float | None, str | None]:
         try:
-            logger.info(f"🌐 Trying homepage => {DINAR_HOME_URL}")
-
             response = requests.get(
                 DINAR_HOME_URL,
                 headers=self._headers(),
                 timeout=10,
             )
-
-            logger.info(f"📡 status={response.status_code} url={response.url}")
 
             if response.status_code != 200:
                 logger.error(f"Homepage body={response.text[:300]}")
@@ -95,19 +93,27 @@ class DinarPoster:
                 microsecond=0,
             )
 
-        return max(int((next_run - now).total_seconds()), 1)
+        return max(math.ceil((next_run - now).total_seconds()), 1)
 
     async def post_dinar(self) -> None:
         try:
+            now = datetime.now(self.config.BAGHDAD_TZ)
+            slot_key = now.strftime("%Y-%m-%d %H:%M")
+
+            if self._last_post_slot == slot_key:
+                logger.warning(f"⛔ Duplicate post prevented for slot {slot_key}")
+                return
+
             value, created_at = await self._fetch_dinar_price()
 
             if not value:
                 logger.warning("⚠️ DinarPoster: نرخ نەگەیشت")
                 return
 
-            now = datetime.now(self.config.BAGHDAD_TZ)
             msg = self.build_message(value, now)
             await self.telegram.send_message(msg)
+
+            self._last_post_slot = slot_key
 
             logger.info(
                 f"✅ DinarPoster: 100$ = {value:,.0f} IQD | source=homepage-scrape | created_at={created_at}"
@@ -121,7 +127,6 @@ class DinarPoster:
 
         while True:
             now = datetime.now(self.config.BAGHDAD_TZ)
-
             wait_seconds = self._seconds_until_next_half_hour(now)
             next_run_time = now + timedelta(seconds=wait_seconds)
 
