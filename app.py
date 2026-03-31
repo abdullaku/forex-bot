@@ -72,7 +72,7 @@ class ForexBotApp:
         if await is_posted(url):
             return
 
-        text = await process_smart_news(article["title"])
+        text = await process_smart_news(article["title"], article.get("summary", ""))
 
         if not text:
             await mark_posted(url)
