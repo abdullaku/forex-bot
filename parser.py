@@ -12,11 +12,11 @@ class NewsParser:
         "GOLD",
         "WTI",
         "OIL",
-        "USD",
     ]
 
     def detect_pairs(self, text):
-        return [pair for pair in self.FOREX_PAIRS if pair.upper() in text.upper()]
+        text_upper = (text or "").upper()
+        return [pair for pair in self.FOREX_PAIRS if pair.upper() in text_upper]
 
     def _clean_summary(self, raw: str) -> str:
         # ١. HTML entities کۆد بکەرەوە  &amp; → &  &lt; → <
