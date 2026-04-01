@@ -1,154 +1,111 @@
 import asyncio
 import logging
-import math
-import re
-from datetime import datetime, timedelta
+from datetime import datetime
 
-import requests
+import aiohttp
 
 from config import Config
 from telegram_service import TelegramService
+from facebook import FacebookService
 
 logger = logging.getLogger(__name__)
 
-DINAR_HOME_URL = "https://dinarapi.hediworks.site"
+YAHOO_URL = "https://query1.finance.yahoo.com/v8/finance/chart/{symbol}?interval=1m&range=1d"
 
 
-class DinarPoster:
-    def __init__(self, telegram: TelegramService):
+class PricePoster:
+    GOLD_TICKER = "GC=F"
+    BRENT_TICKER = "BZ=F"
+
+    def __init__(self, telegram: TelegramService, facebook: FacebookService):
         self.telegram = telegram
+        self.facebook = facebook
         self.config = Config()
-        self._last_post_slot = None
-        self._last_value = None
 
-    def _headers(self) -> dict:
-        return {
-            "User-Agent": "Mozilla/5.0",
-            "Accept": "text/html,application/json;q=0.9,*/*;q=0.8",
-        }
-
-    def _fetch_dinar_price_sync(self) -> tuple[float | None, str | None]:
+    async def _fetch_price(self, symbol: str) -> float | None:
+        url = YAHOO_URL.format(symbol=symbol)
         try:
-            response = requests.get(
-                DINAR_HOME_URL,
-                headers=self._headers(),
-                timeout=10,
-            )
-
-            if response.status_code != 200:
-                logger.error(f"Homepage body={response.text[:300]}")
-                return None, None
-
-            html = response.text
-
-            m = re.search(
-                r'"data"\s*:\s*\{\s*"value"\s*:\s*"?([\d,]+)"?\s*,\s*"created_at"\s*:\s*"([^"]+)"',
-                html,
-                re.S,
-            )
-            if m:
-                value = float(m.group(1).replace(",", ""))
-                created_at = m.group(2)
-                return value, created_at
-
-            m2 = re.search(r'100\s*دۆلار\s*.*?([\d,]{3,})', html, re.S)
-            if m2:
-                value = float(m2.group(1).replace(",", ""))
-                return value, None
-
-            logger.error("Could not find dollar price in homepage")
-            return None, None
-
+            async with aiohttp.ClientSession(headers={"User-Agent": "Mozilla/5.0"}) as session:
+                async with session.get(url, timeout=aiohttp.ClientTimeout(total=10)) as resp:
+                    if resp.status != 200:
+                        return None
+                    data = await resp.json()
+                    return data["chart"]["result"][0]["meta"].get("regularMarketPrice")
         except Exception as e:
-            logger.error(f"❌ Homepage scrape error: {e}")
-            return None, None
+            logger.error(f"Price fetch error {symbol}: {e}")
+            return None
 
-    async def _fetch_dinar_price(self) -> tuple[float | None, str | None]:
-        return await asyncio.to_thread(self._fetch_dinar_price_sync)
+    async def get_prices(self) -> tuple[float, float]:
+        gold, brent = await asyncio.gather(
+            self._fetch_price(self.GOLD_TICKER),
+            self._fetch_price(self.BRENT_TICKER),
+        )
+        return gold, brent
 
-    def build_message(self, value: float, now: datetime) -> str:
+    def build_message(self, gold: float, brent: float, now: datetime) -> str:
         time_str = now.strftime("%H:%M")
         date_str = now.strftime("%d/%m/%Y")
         channel = self.config.CHANNEL_USERNAME
-        one_dollar = round(value / 100)
 
         return (
-            "💵 نرخی دۆلاری نافەرمی\n"
-            "لە بازاڕەکانی هەرێمی کوردستان\n\n"
-            f"💲 100 دۆلار = {value:,.0f} دینار\n"
-            f"💲 1 دۆلار  = {one_dollar:,.0f} دینار\n\n"
+            "💹 نرخی بازاڕی ئێستا\n\n"
+            f"🥇 زێڕ (XAU/USD)\n"
+            f"    💲 {gold:,.2f}\n\n"
+            f"🛢️ نەوتی برێنت (Brent)\n"
+            f"    💲 {brent:.2f}\n\n"
             f"🕐 {time_str} | {date_str}\n"
             f"🔔 {channel}"
         )
 
-    def _is_working_hours(self, now: datetime) -> bool:
-        return 8 <= now.hour < 24
+    def _is_market_time(self, now: datetime) -> bool:
+        if now.weekday() > 4:
+            return False
+        if now.hour < 9 or now.hour >= 24:
+            return False
+        if now.hour == 23 and now.minute > 30:
+            return False
+        return True
 
-    def _seconds_until_next_half_hour(self, now: datetime) -> int:
-        if now.minute < 30:
-            next_run = now.replace(minute=30, second=0, microsecond=0)
-        else:
-            next_run = (now + timedelta(hours=1)).replace(
-                minute=0,
-                second=0,
-                microsecond=0,
-            )
-
-        return max(math.ceil((next_run - now).total_seconds()), 1)
-
-    async def post_dinar(self) -> None:
+    async def post_prices(self) -> None:
         try:
+            gold, brent = await self.get_prices()
+            if not gold or not brent:
+                logger.warning("⚠️ PricePoster: نرخەکان نەگەیشت")
+                return
+
             now = datetime.now(self.config.BAGHDAD_TZ)
-            slot_key = now.strftime("%Y-%m-%d %H:%M")
+            msg = self.build_message(gold, brent, now)
 
-            if self._last_post_slot == slot_key:
-                logger.warning(f"⛔ Duplicate post prevented for slot {slot_key}")
-                return
+            try:
+                await self.telegram.send_message(msg)
+            except Exception as e:
+                logger.error(f"❌ PricePoster Telegram error: {e}")
 
-            value, created_at = await self._fetch_dinar_price()
+            try:
+                await self.facebook.post(msg)
+            except Exception as e:
+                logger.error(f"❌ PricePoster Facebook error: {e}")
 
-            if not value:
-                logger.warning("⚠️ DinarPoster: نرخ نەگەیشت")
-                return
-
-            if self._last_value is not None and value == self._last_value:
-                logger.info(
-                    f"⏭️ DinarPoster: same value as previous post ({value:,.0f}), skip"
-                )
-                self._last_post_slot = slot_key
-                return
-
-            msg = self.build_message(value, now)
-            await self.telegram.send_message(msg)
-
-            self._last_value = value
-            self._last_post_slot = slot_key
-
-            logger.info(
-                f"✅ DinarPoster: 100$ = {value:,.0f} IQD | source=homepage-scrape | created_at={created_at}"
-            )
+            logger.info(f"✅ PricePoster: زێر={gold:.2f}  برێنت={brent:.2f}")
 
         except Exception as e:
-            logger.error(f"❌ DinarPoster error: {e}")
+            logger.error(f"❌ PricePoster error: {e}")
 
     async def run(self) -> None:
-        logger.info("💵 DinarPoster: دەستی پێکرد")
-
+        logger.info("🕐 PricePoster: دەستی پێکرد")
         while True:
             now = datetime.now(self.config.BAGHDAD_TZ)
-            wait_seconds = self._seconds_until_next_half_hour(now)
-            next_run_time = now + timedelta(seconds=wait_seconds)
+            minute = now.minute
+            second = now.second
 
-            logger.info(
-                f"⏳ Next run in {wait_seconds}s at {next_run_time.strftime('%Y-%m-%d %H:%M:%S')}"
-            )
+            if minute < 30:
+                wait_seconds = (30 - minute) * 60 - second
+            else:
+                wait_seconds = (60 - minute) * 60 - second
 
+            wait_seconds = max(wait_seconds, 1)
             await asyncio.sleep(wait_seconds)
 
             now = datetime.now(self.config.BAGHDAD_TZ)
-            logger.info(f"⏱️ Tick: {now.strftime('%Y-%m-%d %H:%M:%S')}")
-
-            if self._is_working_hours(now):
-                await self.post_dinar()
-            else:
-                logger.info("🛌 لە کاتی کارکردن نییە")
+            if self._is_market_time(now):
+                await self.post_prices()
