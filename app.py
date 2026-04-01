@@ -11,7 +11,7 @@ from formatter import TextFormatter
 from telegram_service import TelegramService
 from facebook import FacebookService
 from price_poster import PricePoster
-from dinar_poster import DinarPoster          # ✅ زیادکراو — نرخی نا فەرمی دینار
+from dinar_poster import DinarPoster
 
 logger = logging.getLogger(__name__)
 
@@ -33,7 +33,7 @@ class ForexBotApp:
         self.scraper = SourcesManager()
         self.last_calendar_day = ""
         self.price_poster = PricePoster(self.telegram, self.facebook)
-        self.dinar_poster = DinarPoster(self.telegram)  # ✅ زیادکراو
+        self.dinar_poster = DinarPoster(self.telegram)
 
     def get_now(self) -> datetime:
         return datetime.now(self.config.BAGHDAD_TZ)
@@ -136,7 +136,7 @@ class ForexBotApp:
         await self.setup()
 
         asyncio.create_task(self.price_poster.run())
-        asyncio.create_task(self.dinar_poster.run())   # ✅ زیادکراو
+        asyncio.create_task(self.dinar_poster.run())
 
         while True:
             try:
