@@ -3,6 +3,7 @@ import re
 import asyncio
 import logging
 from groq import Groq
+from google import genai
 
 logger = logging.getLogger(__name__)
 
@@ -11,10 +12,15 @@ class TranslatorConfig:
     API_KEY = os.getenv("GROQ_API_KEY")
     MODEL = "llama-3.3-70b-versatile"
 
+    GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+    GEMINI_MODEL = "gemini-2.5-flash"
+
     @classmethod
     def validate(cls):
         if not cls.API_KEY:
             raise ValueError("❌ GROQ_API_KEY is not set in environment variables")
+        if not cls.GEMINI_API_KEY:
+            raise ValueError("❌ GEMINI_API_KEY is not set in environment variables")
 
 
 TranslatorConfig.validate()
@@ -25,12 +31,15 @@ class SmartTranslator:
         self.client = Groq(api_key=TranslatorConfig.API_KEY)
         self.model = TranslatorConfig.MODEL
 
+        self.gemini_client = genai.Client(api_key=TranslatorConfig.GEMINI_API_KEY)
+        self.gemini_model = TranslatorConfig.GEMINI_MODEL
+
         self.forbidden_script_pattern = re.compile(
-            r"[\u0400-\u04FF"   # Cyrillic
-            r"\u3040-\u30FF"    # Hiragana + Katakana
-            r"\u0900-\u097F"    # Devanagari
-            r"\u0E00-\u0E7F"    # Thai
-            r"\u4E00-\u9FFF]"   # CJK Unified Ideographs
+            r"[\u0400-\u04FF"
+            r"\u3040-\u30FF"
+            r"\u0900-\u097F"
+            r"\u0E00-\u0E7F"
+            r"\u4E00-\u9FFF]"
         )
 
         self.allowed_punctuation_pattern = re.compile(r"[^0-9A-Za-z\u0600-\u06FF\s\.,:%$€£()\-\/'\":؛،؟!+]")
@@ -96,15 +105,12 @@ class SmartTranslator:
         if not word:
             return ""
 
-        # Keep pure Arabic-script Kurdish words
         if re.fullmatch(r"[\u0600-\u06FF0-9]+", word):
             return word
 
-        # Keep English proper nouns / tickers / abbreviations
         if re.fullmatch(r"[A-Za-z0-9.\-_/&]+", word):
             return word
 
-        # Mixed word: keep Kurdish part if present, else keep plain English part if present
         kurdish_part = re.sub(r"[^\u0600-\u06FF0-9]", "", word)
         english_part = re.sub(r"[^A-Za-z0-9.\-_/&]", "", word)
 
@@ -117,14 +123,9 @@ class SmartTranslator:
 
     def _clean_result(self, text: str) -> str:
         text = self._strip_markdown(text)
-
-        # remove clearly forbidden scripts first
         text = self.forbidden_script_pattern.sub(" ", text)
-
-        # keep only Arabic script, ASCII, digits, whitespace, and simple punctuation
         text = self.allowed_punctuation_pattern.sub(" ", text)
 
-        # clean per-word
         words = text.split()
         cleaned_words = []
 
@@ -134,13 +135,9 @@ class SmartTranslator:
                 cleaned_words.append(cleaned)
 
         text = " ".join(cleaned_words)
-
-        # normalize whitespace around punctuation
         text = re.sub(r"\s+([.,:%$€£()\/'\":؛،؟!+\-])", r"\1", text)
         text = re.sub(r"([(\-\/])\s+", r"\1", text)
         text = re.sub(r"\s+", " ", text).strip()
-
-        # normalize multiple blank lines
         text = re.sub(r"\n\s*\n+", "\n\n", text)
 
         return text.strip()
@@ -168,11 +165,9 @@ class SmartTranslator:
         arabic_count = self._arabic_word_count(text)
         latin_count = self._latin_word_count(text)
 
-        # Must contain meaningful Sorani body unless it is SKIP
         if arabic_count < 4:
             return True
 
-        # Too much English usually means the model ignored the instruction
         if latin_count > max(6, arabic_count // 2):
             return True
 
@@ -191,9 +186,30 @@ class SmartTranslator:
     async def _chat(self, prompt: str) -> str:
         return await asyncio.to_thread(self._chat_sync, prompt)
 
+    def _gemini_translate_sync(self, text: str) -> str:
+        prompt = (
+            "Rewrite the following Kurdish financial news text into clean, natural Central Kurdish (Sorani) "
+            "using Arabic script only.\n"
+            "Rules:\n"
+            "- Keep the meaning exact.\n"
+            "- Keep English proper nouns only when necessary.\n"
+            "- Do not add explanations.\n"
+            "- Do not add markdown, bullets, or hashtags.\n"
+            "- Return only the final Kurdish text.\n\n"
+            f"Text:\n{text}"
+        )
+
+        response = self.gemini_client.models.generate_content(
+            model=self.gemini_model,
+            contents=prompt,
+        )
+        return (response.text or "").strip()
+
+    async def _gemini_translate(self, text: str) -> str:
+        return await asyncio.to_thread(self._gemini_translate_sync, text)
+
     async def process(self, title: str, description: str = ""):
         try:
-            # First attempt
             prompt = self._create_prompt(title, description, strict=False)
             result = await self._chat(prompt)
 
@@ -204,7 +220,6 @@ class SmartTranslator:
 
             cleaned = self._clean_result(result)
 
-            # Retry once if output is polluted or low quality
             if self._looks_bad_output(cleaned):
                 retry_prompt = self._create_prompt(title, description, strict=True)
                 retry_result = await self._chat(retry_prompt)
@@ -216,13 +231,25 @@ class SmartTranslator:
 
                 retry_cleaned = self._clean_result(retry_result)
 
-                # Prefer retry if it is better
                 if not self._looks_bad_output(retry_cleaned):
                     cleaned = retry_cleaned
 
             if not cleaned or len(cleaned) < 10:
                 logger.warning(f"⚠️ Translation too short or empty: {title[:60]}")
                 return None
+
+            await asyncio.sleep(5)
+
+            try:
+                gemini_result = await self._gemini_translate(cleaned)
+                gemini_cleaned = self._clean_result(gemini_result)
+
+                if gemini_cleaned and not self._looks_bad_output(gemini_cleaned):
+                    cleaned = gemini_cleaned
+                else:
+                    logger.warning(f"⚠️ Gemini output rejected, keeping Groq version: {title[:60]}")
+            except Exception as gemini_error:
+                logger.warning(f"⚠️ Gemini refine failed, keeping Groq version: {gemini_error}")
 
             logger.info(f"✅ Translated: {title[:60]}")
             return cleaned
