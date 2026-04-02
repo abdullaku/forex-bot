@@ -86,30 +86,55 @@ class SmartTranslator:
     async def _chat(self, prompt: str) -> str:
         return await asyncio.to_thread(self._chat_sync, prompt)
 
-    # ✅ GEMINI FINAL STYLE (UPDATED)
     def _gemini_translate_sync(self, text: str) -> str:
         prompt = (
             "Rewrite the following financial and forex news text into clear, natural, professional Central Kurdish (Sorani) "
             "for a Kurdish Telegram news channel.\n\n"
 
+            "Thinking rules:\n"
+            "- Understand the news deeply before writing.\n"
+            "- Rewrite it as a financial analyst would explain it.\n"
+            "- Do NOT translate word-by-word.\n"
+            "- Make the meaning clear even if the original text is complex or awkward.\n"
+            "- If the original text is unclear, rewrite it into clear and meaningful Kurdish.\n\n"
+
+            "Accuracy rules:\n"
+            "- Preserve the exact meaning and core facts.\n"
+            "- Do NOT change the main topic.\n"
+            "- Do NOT replace countries, assets, or causes with different ones.\n"
+            "- If the news is about gas, do not change it to oil.\n"
+            "- If a country is mentioned, keep it.\n"
+            "- Keep numbers and percentages accurate.\n"
+            "- Do not invent background details.\n\n"
+
             "Language rules:\n"
             "- Write only in Central Kurdish (Sorani) using Arabic script.\n"
             "- Use fluent, natural Sorani.\n"
-            "- Avoid awkward or literal translation.\n\n"
+            "- Avoid awkward, literal, or machine-like translation.\n"
+            "- Use clear journalistic Kurdish.\n"
+            "- Avoid vague wording when a clearer financial wording exists.\n\n"
+
+            "Terminology rules:\n"
+            "- Use precise financial and market terminology.\n"
+            "- Preserve important financial terms when needed, such as hedge fund, bond, yield, private credit.\n"
+            "- Do not over-generalize financial entities.\n"
+            "- If a technical term is better kept in English, keep it naturally inside the Kurdish sentence.\n\n"
 
             "Style rules:\n"
             "- No emojis.\n"
             "- No hype.\n"
-            "- Keep it clean and professional.\n\n"
+            "- No dramatic or exaggerated tone.\n"
+            "- Keep it clean, readable, and professional.\n"
+            "- Make it suitable for a Forex and financial Telegram channel.\n\n"
 
             "Structure:\n"
-            "1. Short headline\n"
-            "2. Main news\n"
-            "3. Market implication\n\n"
+            "- First line: a short, strong, market-focused headline that shows direction or impact, not a generic title.\n"
+            "- Second paragraph: the main news in 1 or 2 clear sentences.\n"
+            "- Third paragraph: one short sentence showing the likely market implication.\n\n"
 
             "Important:\n"
-            "- Keep terms like Fed, USD, IMF, Brent in English.\n"
-            "- Do not add extra text.\n"
+            "- Keep terms like Fed, USD, IMF, Brent, WTI, CPI, GDP in English when needed.\n"
+            "- Do not add extra information outside the scope of the news.\n"
             "- Output only final Kurdish text.\n\n"
 
             f"Text:\n{text}"
@@ -138,7 +163,6 @@ class SmartTranslator:
             if not cleaned or len(cleaned) < 10:
                 return None
 
-            # delay before Gemini
             await asyncio.sleep(5)
 
             try:
