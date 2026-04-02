@@ -75,7 +75,7 @@ class ForexBotApp:
         text = await process_smart_news(article["title"], article.get("summary", ""))
 
         if not text:
-            await mark_posted(url)
+            logger.info(f"⏳ Not marked as posted because translation/news processing returned empty: {url}")
             return
 
         source = article.get("source", "News")
