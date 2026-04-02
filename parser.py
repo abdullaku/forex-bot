@@ -70,5 +70,5 @@ class NewsParser:
             "category": category,
             "pairs": self.detect_pairs(title + " " + summary),
             "image_url": image_url or None,
-            "published_at": datetime.now().isoformat(),
+            "published_at": item.find("pubDate").text.strip() if item.find("pubDate") else datetime.now().isoformat(),
         }
