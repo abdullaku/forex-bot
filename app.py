@@ -120,8 +120,6 @@ class ForexBotApp:
         if tg_ok or fb_ok:
             await mark_posted(url)
 
-        await asyncio.sleep(self.config.POST_DELAY)
-
     async def process_news(self, current_time: str, current_date: str) -> None:
         articles = await self.scraper.fetch_all()
 
@@ -150,3 +148,7 @@ class ForexBotApp:
             except Exception as e:
                 logger.error(f"Error: {e}")
                 await asyncio.sleep(60)
+
+
+if __name__ == "__main__":
+    asyncio.run(ForexBotApp().run())
