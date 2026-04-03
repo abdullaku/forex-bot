@@ -18,30 +18,34 @@ class FacebookService:
             clean = re.sub(r"🔗.*", "", clean).strip()
             clean = re.sub(r"\n{3,}", "\n\n", clean).strip()
 
-            if link_url:
-                url = f"https://graph.facebook.com/v19.0/{self.page_id}/feed"
-                data = {
-                    "message": clean,
-                    "link": link_url,
-                    "access_token": self.page_token,
-                }
-            elif image_url:
-                url = f"https://graph.facebook.com/v19.0/{self.page_id}/photos"
+            if image_url:
+                # وێنە هەیە — بە /photos بنێرە، لینکەکەش لە caption زیاد بکە
+                if link_url:
+                    clean = f"{clean}\n\n🔗 {link_url}"
+                endpoint = f"https://graph.facebook.com/v19.0/{self.page_id}/photos"
                 data = {
                     "url": image_url,
                     "caption": clean,
                     "access_token": self.page_token,
                 }
+            elif link_url:
+                # وێنە نییە، تەنها لینک
+                endpoint = f"https://graph.facebook.com/v19.0/{self.page_id}/feed"
+                data = {
+                    "message": clean,
+                    "link": link_url,
+                    "access_token": self.page_token,
+                }
             else:
-                url = f"https://graph.facebook.com/v19.0/{self.page_id}/feed"
+                # تەنها تێکست — دینار، نرخ، ئتد
+                endpoint = f"https://graph.facebook.com/v19.0/{self.page_id}/feed"
                 data = {
                     "message": clean,
                     "access_token": self.page_token,
                 }
 
-            # ✅ async — event loop بلۆک نابێت
             async with aiohttp.ClientSession() as session:
-                async with session.post(url, data=data, timeout=aiohttp.ClientTimeout(total=30)) as resp:
+                async with session.post(endpoint, data=data, timeout=aiohttp.ClientTimeout(total=30)) as resp:
                     if resp.status not in (200, 201):
                         text_resp = await resp.text()
                         logger.error(f"FB Error {resp.status}: {text_resp}")
