@@ -8,6 +8,7 @@ import requests
 
 from config import Config
 from telegram_service import TelegramService
+from facebook import FacebookService
 
 logger = logging.getLogger(__name__)
 
@@ -15,8 +16,9 @@ DINAR_HOME_URL = "https://dinarapi.hediworks.site"
 
 
 class DinarPoster:
-    def __init__(self, telegram: TelegramService):
+    def __init__(self, telegram: TelegramService, facebook: FacebookService):
         self.telegram = telegram
+        self.facebook = facebook
         self.config = Config()
         self._last_post_slot = None
 
@@ -111,7 +113,16 @@ class DinarPoster:
                 return
 
             msg = self.build_message(value, now)
-            await self.telegram.send_message(msg)
+
+            try:
+                await self.telegram.send_message(msg)
+            except Exception as e:
+                logger.error(f"❌ DinarPoster Telegram error: {e}")
+
+            try:
+                await self.facebook.post(msg)
+            except Exception as e:
+                logger.error(f"❌ DinarPoster Facebook error: {e}")
 
             self._last_post_slot = slot_key
 
