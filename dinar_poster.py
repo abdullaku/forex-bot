@@ -1,155 +1,156 @@
 import asyncio
 import logging
-from datetime import datetime
+import math
+import re
+from datetime import datetime, timedelta
 
-from manager import SourcesManager
-from translator import process_smart_news
-from database import setup_db, is_posted, mark_posted
+import requests
 
 from config import Config
-from formatter import TextFormatter
 from telegram_service import TelegramService
 from facebook import FacebookService
-from price_poster import PricePoster
-from dinar_poster import DinarPoster
 
 logger = logging.getLogger(__name__)
 
+DINAR_HOME_URL = "https://dinarapi.hediworks.site"
 
-class ForexBotApp:
-    def __init__(self):
+
+class DinarPoster:
+    def __init__(self, telegram: TelegramService, facebook: FacebookService):
+        self.telegram = telegram
+        self.facebook = facebook
         self.config = Config()
+        self._last_post_slot = None
 
-        self.telegram = TelegramService(
-            token=self.config.TOKEN,
-            channel_id=self.config.CHANNEL_ID,
-        )
+    def _headers(self) -> dict:
+        return {
+            "User-Agent": "Mozilla/5.0",
+            "Accept": "text/html,application/json;q=0.9,*/*;q=0.8",
+        }
 
-        self.facebook = FacebookService(
-            page_id=self.config.FACEBOOK_PAGE_ID,
-            page_token=self.config.FACEBOOK_PAGE_TOKEN,
-        )
-
-        self.scraper = SourcesManager()
-        self.last_calendar_day = ""
-        self.price_poster = PricePoster(self.telegram, self.facebook)
-        self.dinar_poster = DinarPoster(self.telegram, self.facebook)
-
-    def get_now(self) -> datetime:
-        return datetime.now(self.config.BAGHDAD_TZ)
-
-    def get_time_strings(self):
-        now = self.get_now()
-        current_day = now.strftime("%Y-%m-%d")
-        current_time = now.strftime("%H:%M")
-        current_date = now.strftime("%d/%m/%Y")
-        return now, current_day, current_time, current_date
-
-    async def setup(self) -> None:
-        await setup_db()
-        logger.info("🚀 Bot Started")
-
-    async def process_calendar(self, now: datetime, current_day: str) -> None:
-        if now.hour == 9 and self.last_calendar_day != current_day:
-            events = await self.scraper.fetch_calendar()
-
-            if events:
-                tg_msg = self.scraper.calendar_service.build_telegram_msg(events)
-                fb_msg = self.scraper.calendar_service.build_facebook_msg(events)
-                await self.telegram.send_message(tg_msg)
-                await self.facebook.post(fb_msg)
-
-            self.last_calendar_day = current_day
-
-    async def process_article(
-        self,
-        article: dict,
-        current_time: str,
-        current_date: str,
-    ) -> None:
-        url = article["url"].split("?")[0]
-
-        if await is_posted(url):
-            return
-
-        text = await process_smart_news(article["title"], article.get("summary", ""))
-
-        if not text:
-            logger.info(f"⏭️ Skipped (marked as seen): {url}")
-            await mark_posted(url)
-            return
-
-        source = article.get("source", "News")
-
-        telegram_msg = TextFormatter.build_telegram_message(
-            text=text,
-            source=source,
-            url=url,
-            current_time=current_time,
-            current_date=current_date,
-        )
-
-        facebook_msg = TextFormatter.build_facebook_message(
-            text=text,
-            source=source,
-            current_time=current_time,
-            current_date=current_date,
-        )
-
-        tg_ok = False
-        fb_ok = False
-
+    def _fetch_dinar_price_sync(self) -> tuple[float | None, str | None]:
         try:
-            await self.telegram.send_news(
-                text=telegram_msg,
-                image_url=article.get("image_url"),
+            response = requests.get(
+                DINAR_HOME_URL,
+                headers=self._headers(),
+                timeout=10,
             )
-            tg_ok = True
-        except Exception as e:
-            logger.error(f"Telegram error: {e}")
 
+            if response.status_code != 200:
+                logger.error(f"Homepage body={response.text[:300]}")
+                return None, None
+
+            html = response.text
+
+            m = re.search(
+                r'"data"\s*:\s*\{\s*"value"\s*:\s*"?([\d,]+)"?\s*,\s*"created_at"\s*:\s*"([^"]+)"',
+                html,
+                re.S,
+            )
+            if m:
+                value = float(m.group(1).replace(",", ""))
+                created_at = m.group(2)
+                return value, created_at
+
+            m2 = re.search(r'100\s*دۆلار\s*.*?([\d,]{3,})', html, re.S)
+            if m2:
+                value = float(m2.group(1).replace(",", ""))
+                return value, None
+
+            logger.error("Could not find dollar price in homepage")
+            return None, None
+
+        except Exception as e:
+            logger.error(f"❌ Homepage scrape error: {e}")
+            return None, None
+
+    async def _fetch_dinar_price(self) -> tuple[float | None, str | None]:
+        return await asyncio.to_thread(self._fetch_dinar_price_sync)
+
+    def build_message(self, value: float, now: datetime) -> str:
+        time_str = now.strftime("%H:%M")
+        date_str = now.strftime("%d/%m/%Y")
+        channel = self.config.CHANNEL_USERNAME
+        one_dollar = round(value / 100)
+
+        return (
+            "💵 نرخی دۆلاری نافەرمی\n"
+            "لە بازاڕەکانی هەرێمی کوردستان\n\n"
+            f"💲 100 دۆلار = {value:,.0f} دینار\n"
+            f"💲 1 دۆلار  = {one_dollar:,.0f} دینار\n\n"
+            f"🕐 {time_str} | {date_str}\n"
+            f"🔔 {channel}"
+        )
+
+    def _is_working_hours(self, now: datetime) -> bool:
+        return 8 <= now.hour < 24
+
+    def _seconds_until_next_half_hour(self, now: datetime) -> int:
+        if now.minute < 30:
+            next_run = now.replace(minute=30, second=0, microsecond=0)
+        else:
+            next_run = (now + timedelta(hours=1)).replace(
+                minute=0,
+                second=0,
+                microsecond=0,
+            )
+
+        return max(math.ceil((next_run - now).total_seconds()), 1)
+
+    async def post_dinar(self) -> None:
         try:
-            await self.facebook.post(
-                text=facebook_msg,
-                image_url=article.get("image_url"),
-                link_url=url,
+            now = datetime.now(self.config.BAGHDAD_TZ)
+            slot_key = now.strftime("%Y-%m-%d %H:%M")
+
+            if self._last_post_slot == slot_key:
+                logger.warning(f"⛔ Duplicate post prevented for slot {slot_key}")
+                return
+
+            value, created_at = await self._fetch_dinar_price()
+
+            if not value:
+                logger.warning("⚠️ DinarPoster: نرخ نەگەیشت")
+                return
+
+            msg = self.build_message(value, now)
+
+            try:
+                await self.telegram.send_message(msg)
+            except Exception as e:
+                logger.error(f"❌ DinarPoster Telegram error: {e}")
+
+            try:
+                await self.facebook.post(msg)
+            except Exception as e:
+                logger.error(f"❌ DinarPoster Facebook error: {e}")
+
+            self._last_post_slot = slot_key
+
+            logger.info(
+                f"✅ DinarPoster: 100$ = {value:,.0f} IQD | source=homepage-scrape | created_at={created_at}"
             )
-            fb_ok = True
+
         except Exception as e:
-            logger.error(f"Facebook error: {e}")
-
-        if tg_ok or fb_ok:
-            await mark_posted(url)
-
-    async def process_news(self, current_time: str, current_date: str) -> None:
-        articles = await self.scraper.fetch_all()
-
-        for article in articles:
-            await self.process_article(
-                article=article,
-                current_time=current_time,
-                current_date=current_date,
-            )
+            logger.error(f"❌ DinarPoster error: {e}")
 
     async def run(self) -> None:
-        await self.setup()
-
-        asyncio.create_task(self.price_poster.run())
-        asyncio.create_task(self.dinar_poster.run())
+        logger.info("💵 DinarPoster: دەستی پێکرد")
 
         while True:
-            try:
-                now, current_day, current_time, current_date = self.get_time_strings()
+            now = datetime.now(self.config.BAGHDAD_TZ)
+            wait_seconds = self._seconds_until_next_half_hour(now)
+            next_run_time = now + timedelta(seconds=wait_seconds)
 
-                await self.process_calendar(now, current_day)
-                await self.process_news(current_time, current_date)
+            logger.info(
+                f"⏳ Next run in {wait_seconds}s at {next_run_time.strftime('%Y-%m-%d %H:%M:%S')}"
+            )
 
-                await asyncio.sleep(self.config.CHECK_INTERVAL)
+            await asyncio.sleep(wait_seconds)
 
-            except Exception as e:
-                logger.error(f"Error: {e}")
-                await asyncio.sleep(60)
+            now = datetime.now(self.config.BAGHDAD_TZ)
+            logger.info(f"⏱️ Tick: {now.strftime('%Y-%m-%d %H:%M:%S')}")
 
-
-if __name__ == "__main__":
-    asyncio.run(ForexBotApp().run())
+            if self._is_working_hours(now):
+                await self.post_dinar()
+            else:
+                logger.info("🛌 لە کاتی کارکردن نییە")
