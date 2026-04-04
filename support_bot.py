@@ -96,8 +96,79 @@ def _ask_groq(user_id: int, user_message: str) -> str:
 
 
 # ── Handlers ─────────────────────────────────────────────────────────────────
+async def _forward_media_to_admin(update: Update, context: ContextTypes.DEFAULT_TYPE, username: str, user_id: int) -> None:
+    """هەر جۆرە مێدیایەک فۆرواردی بکە بۆ ئادمین"""
+    msg = update.message
+    prefix = f"👤 <b>{username}</b> [{user_id}]:"
+
+    await context.bot.send_message(chat_id=ADMIN_ID, text=prefix, parse_mode="HTML")
+
+    if msg.voice:
+        await context.bot.send_voice(chat_id=ADMIN_ID, voice=msg.voice.file_id)
+    elif msg.audio:
+        await context.bot.send_audio(chat_id=ADMIN_ID, audio=msg.audio.file_id)
+    elif msg.video:
+        await context.bot.send_video(chat_id=ADMIN_ID, video=msg.video.file_id, caption=msg.caption or "")
+    elif msg.video_note:
+        await context.bot.send_video_note(chat_id=ADMIN_ID, video_note=msg.video_note.file_id)
+    elif msg.photo:
+        await context.bot.send_photo(chat_id=ADMIN_ID, photo=msg.photo[-1].file_id, caption=msg.caption or "")
+    elif msg.document:
+        await context.bot.send_document(chat_id=ADMIN_ID, document=msg.document.file_id, caption=msg.caption or "")
+    elif msg.sticker:
+        await context.bot.send_sticker(chat_id=ADMIN_ID, sticker=msg.sticker.file_id)
+
+
+async def _handle_user_media(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """مێدیای کریار — ئەگەر تەیکئۆڤەر چالاکە فۆرواردی بکە، وەرنەخێر پەیامی ڕاهێنان"""
+    if not update.message:
+        return
+
+    user_id = update.effective_user.id
+    username = update.effective_user.first_name or "کریار"
+
+    if user_id in _takeover_active:
+        await _forward_media_to_admin(update, context, username, user_id)
+    else:
+        await update.message.reply_text(
+            "ببورە، تەنها تێکست وەردەدەم 😊\n"
+            "پرسیارەکەت بە نووسین بنێرە."
+        )
+
+
+async def _handle_admin_media(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """مێدیای ئادمین — فۆرواردی بکە بۆ کریار"""
+    global _admin_chatting_with
+
+    if not update.message or _admin_chatting_with is None:
+        return
+
+    msg = update.message
+    user_id = _admin_chatting_with
+
+    try:
+        if msg.voice:
+            await context.bot.send_voice(chat_id=user_id, voice=msg.voice.file_id)
+        elif msg.audio:
+            await context.bot.send_audio(chat_id=user_id, audio=msg.audio.file_id)
+        elif msg.video:
+            await context.bot.send_video(chat_id=user_id, video=msg.video.file_id, caption=msg.caption or "")
+        elif msg.video_note:
+            await context.bot.send_video_note(chat_id=user_id, video_note=msg.video_note.file_id)
+        elif msg.photo:
+            await context.bot.send_photo(chat_id=user_id, photo=msg.photo[-1].file_id, caption=msg.caption or "")
+        elif msg.document:
+            await context.bot.send_document(chat_id=user_id, document=msg.document.file_id, caption=msg.caption or "")
+        elif msg.sticker:
+            await context.bot.send_sticker(chat_id=user_id, sticker=msg.sticker.file_id)
+
+        await update.message.reply_text("✅ نێردرا")
+    except Exception as e:
+        await update.message.reply_text(f"❌ هەڵە: {e}")
+
+
 async def _handle_user_dm(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """پەیامی کریار وەردەگرێت"""
+    """پەیامی تێکستی کریار وەردەگرێت"""
     if not update.message or not update.message.text:
         return
 
@@ -291,7 +362,13 @@ class SupportBot:
             CommandHandler("done", _cmd_done, filters=filters.User(ADMIN_ID))
         )
 
-        # پەیامی ئادمین (DM بۆ بۆت)
+        MEDIA = (
+            filters.VOICE | filters.AUDIO | filters.VIDEO |
+            filters.VIDEO_NOTE | filters.PHOTO |
+            filters.Document.ALL | filters.Sticker.ALL
+        )
+
+        # تێکستی ئادمین
         self.app.add_handler(
             MessageHandler(
                 filters.TEXT & filters.ChatType.PRIVATE & filters.User(ADMIN_ID),
@@ -299,11 +376,27 @@ class SupportBot:
             )
         )
 
-        # پەیامی کریار (DM بۆ بۆت)
+        # مێدیای ئادمین (سەوت، وێنە، ویدیۆ...)
+        self.app.add_handler(
+            MessageHandler(
+                MEDIA & filters.ChatType.PRIVATE & filters.User(ADMIN_ID),
+                _handle_admin_media,
+            )
+        )
+
+        # تێکستی کریار
         self.app.add_handler(
             MessageHandler(
                 filters.TEXT & filters.ChatType.PRIVATE,
                 _handle_user_dm,
+            )
+        )
+
+        # مێدیای کریار
+        self.app.add_handler(
+            MessageHandler(
+                MEDIA & filters.ChatType.PRIVATE,
+                _handle_user_media,
             )
         )
 
