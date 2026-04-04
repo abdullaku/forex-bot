@@ -12,6 +12,7 @@ from telegram_service import TelegramService
 from facebook import FacebookService
 from price_poster import PricePoster
 from dinar_poster import DinarPoster
+from support_bot import SupportBot
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +35,7 @@ class ForexBotApp:
         self.last_calendar_day = ""
         self.price_poster = PricePoster(self.telegram, self.facebook)
         self.dinar_poster = DinarPoster(self.telegram, self.facebook)
+        self.support_bot = SupportBot(token=self.config.SUPPORT_TOKEN)
 
     def get_now(self) -> datetime:
         return datetime.now(self.config.BAGHDAD_TZ)
@@ -47,6 +49,7 @@ class ForexBotApp:
 
     async def setup(self) -> None:
         await setup_db()
+        await self.support_bot.start()
         logger.info("🚀 Bot Started")
 
     async def process_calendar(self, now: datetime, current_day: str) -> None:
