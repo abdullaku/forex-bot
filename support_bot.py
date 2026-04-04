@@ -120,19 +120,21 @@ async def _forward_media_to_admin(update: Update, context: ContextTypes.DEFAULT_
 
 
 async def _handle_user_media(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """مێدیای کریار — ئەگەر تەیکئۆڤەر چالاکە فۆرواردی بکە، وەرنەخێر پەیامی ڕاهێنان"""
+    """مێدیای کریار — هەمیشە فۆرواردی بکە بۆ ئادمین"""
     if not update.message:
         return
 
     user_id = update.effective_user.id
     username = update.effective_user.first_name or "کریار"
 
-    if user_id in _takeover_active:
-        await _forward_media_to_admin(update, context, username, user_id)
-    else:
+    # هەمیشە بۆ ئادمین دەنێرێت
+    await _forward_media_to_admin(update, context, username, user_id)
+
+    # ئەگەر تەیکئۆڤەر چالاک نەبوو → ئادمین ئاگادار بکەرەوە
+    if user_id not in _takeover_active:
+        await _notify_admin(context.bot, user_id, username, "📎 مێدیا نێردرا")
         await update.message.reply_text(
-            "ببورە، تەنها تێکست وەردەدەم 😊\n"
-            "پرسیارەکەت بە نووسین بنێرە."
+            "✅ پەیامەکەت گەیشت. ئادمین بەم زووانە وەڵامت دەداتەوە."
         )
 
 
