@@ -14,6 +14,9 @@ logger = logging.getLogger(__name__)
 
 DINAR_HOME_URL = "https://dinarapi.hediworks.site"
 
+# ── ئەندازەی گۆڕانکاری بۆ پۆست کردن (دینار) ──────────────────
+PRICE_CHANGE_THRESHOLD = 1000  # هەر 1,000 دینار گۆڕانکاری
+
 
 class DinarPoster:
     def __init__(self, telegram: TelegramService, facebook: FacebookService):
@@ -21,6 +24,7 @@ class DinarPoster:
         self.facebook = facebook
         self.config = Config()
         self._last_post_slot = None
+        self._last_posted_value: float | None = None  # نرخی کاتی پۆستی دوایین
 
     def _headers(self) -> dict:
         return {
@@ -67,15 +71,42 @@ class DinarPoster:
     async def _fetch_dinar_price(self) -> tuple[float | None, str | None]:
         return await asyncio.to_thread(self._fetch_dinar_price_sync)
 
-    def build_message(self, value: float, now: datetime) -> str:
+    def _should_post(self, new_value: float) -> tuple[bool, str]:
+        """
+        دیاری دەکات ئایا دەبێت پۆست بکات یان نا.
+        دەگەڕێتەوە (دەبێت_پۆست_بکات, ئاراستەی_گۆڕانکاری)
+        ئاراستە: 'up' بەرزبوونەوە، 'down' دابەزین، '' یەکەم جار
+        """
+        if self._last_posted_value is None:
+            # یەکەم جاره، بەبێ بەراوردکردن پۆست دەکات
+            return True, ""
+
+        diff = new_value - self._last_posted_value
+
+        if abs(diff) >= PRICE_CHANGE_THRESHOLD:
+            direction = "up" if diff > 0 else "down"
+            return True, direction
+
+        return False, ""
+
+    def build_message(self, value: float, now: datetime, direction: str = "") -> str:
         time_str = now.strftime("%H:%M")
         date_str = now.strftime("%d/%m/%Y")
         channel = self.config.CHANNEL_USERNAME
         one_dollar = round(value / 100)
 
+        # سەرپێچی گۆڕانکاری لەگەڵ ئیمۆجی
+        if direction == "up":
+            change_line = "⬆️ نرخ بەرز بوویەوە\n\n"
+        elif direction == "down":
+            change_line = "⬇️ نرخ دابەزی\n\n"
+        else:
+            change_line = ""
+
         return (
             "💵 نرخی دۆلاری نافەرمی\n"
             "لە بازاڕەکانی هەرێمی کوردستان\n\n"
+            f"{change_line}"
             f"💲 100 دۆلار = {value:,.0f} دینار\n"
             f"💲 1 دۆلار  = {one_dollar:,.0f} دینار\n\n"
             f"🕐 {time_str} | {date_str}\n"
@@ -112,7 +143,19 @@ class DinarPoster:
                 logger.warning("⚠️ DinarPoster: نرخ نەگەیشت")
                 return
 
-            msg = self.build_message(value, now)
+            # ── بەررسی ئایا نرخ بەتەواوی گۆڕاوە ──────────────────────────
+            should_post, direction = self._should_post(value)
+
+            if not should_post:
+                diff = abs(value - self._last_posted_value)
+                logger.info(
+                    f"⏭️ نرخ نەگۆڕا بەتەواوی | نرخی ئێستا={value:,.0f} | "
+                    f"نرخی کۆن={self._last_posted_value:,.0f} | "
+                    f"جیاوازی={diff:,.0f} | پێویستە {PRICE_CHANGE_THRESHOLD:,} گۆڕانکاری"
+                )
+                return
+
+            msg = self.build_message(value, now, direction)
 
             try:
                 await self.telegram.send_message(msg)
@@ -124,11 +167,22 @@ class DinarPoster:
             except Exception as e:
                 logger.error(f"❌ DinarPoster Facebook error: {e}")
 
+            # نرخی نوێ بەخاترەوە بگرە
+            old_value = self._last_posted_value
+            self._last_posted_value = value
             self._last_post_slot = slot_key
 
-            logger.info(
-                f"✅ DinarPoster: 100$ = {value:,.0f} IQD | source=homepage-scrape | created_at={created_at}"
-            )
+            if old_value is not None:
+                diff = value - old_value
+                arrow = "⬆️" if diff > 0 else "⬇️"
+                logger.info(
+                    f"✅ DinarPoster پۆست کرا | 100$={value:,.0f} IQD | "
+                    f"گۆڕانکاری={diff:+,.0f} {arrow} | created_at={created_at}"
+                )
+            else:
+                logger.info(
+                    f"✅ DinarPoster یەکەم پۆست | 100$={value:,.0f} IQD | created_at={created_at}"
+                )
 
         except Exception as e:
             logger.error(f"❌ DinarPoster error: {e}")
