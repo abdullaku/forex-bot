@@ -9,7 +9,6 @@ class TextFormatter:
             return ""
 
         text = text.strip()
-
         text = text.replace("**", "")
         text = text.replace("__", "")
         text = text.replace("```", "")
@@ -35,9 +34,9 @@ class TextFormatter:
         safe_url = html.escape(url, quote=True)
 
         return (
-            f"📰 {safe_text}\n\n"
+            f"{safe_text}\n\n"
             f"📌 {safe_source}\n"
-            f"🔗 <a href='{safe_url}'>بینە هەواڵەکە لە سەرچاوە</a>\n"
+            f'<a href="{safe_url}">بینە هەواڵەکە لە سەرچاوە</a>\n'
             f"🕐 {current_time} | {current_date}"
         )
 
@@ -51,7 +50,7 @@ class TextFormatter:
         clean = TextFormatter.clean_text(text)
 
         return (
-            f"📰 {clean}\n\n"
+            f"{clean}\n\n"
             f"📌 {source}\n"
             f"🕐 {current_time} | {current_date}"
         )
