@@ -33,85 +33,102 @@ class SmartTranslator:
             r"\u4E00-\u9FFF]"
         )
 
-        self.allowed_punctuation_pattern = re.compile(
-            r"[^0-9A-Za-z\u0600-\u06FF\s\.,:%$€£()\-\/'\":؛،؟!+]"
+        self.allowed_inline_pattern = re.compile(
+            r"[^0-9A-Za-z\u0600-\u06FF\s\.\,\:\%\$\€\£\(\)\-\/\'\"\؛\،\؟\!\+\•]"
         )
 
     def _create_filter_prompt(self, title: str, description: str = "") -> str:
         content = f"{title}\n{description}".strip()
         return (
             "You are a senior financial news editor for a Kurdish trading channel.\n\n"
-            "Read the news below carefully and decide if it is directly relevant to Forex traders.\n\n"
-            "If NOT relevant → reply only: SKIP\n\n"
+            "Read the news below carefully and decide if it is directly relevant to Forex, commodities, macro, bonds, rates, stocks, oil, gold, crypto, or global markets.\n\n"
+            "If NOT relevant → reply only: SKIP\n"
             "If relevant → reply only: YES\n\n"
             f"News:\n{content}"
         )
 
     def _create_translate_prompt(self, title: str, description: str = "") -> str:
         content = f"{title}\n{description}".strip()
+
         return (
-            "Rewrite the following financial and forex news text into clear, natural, professional Central Kurdish (Sorani) "
-            "for a Kurdish Telegram news channel.\n\n"
+            "You are a professional Kurdish financial news writer for a Telegram channel.\n\n"
 
-            "Thinking rules:\n"
-            "- Understand the news deeply before writing.\n"
-            "- Rewrite it as a financial analyst would explain it.\n"
-            "- Do NOT translate word-by-word.\n"
-            "- Make the meaning clear even if the original text is complex or awkward.\n"
-            "- If the original text is unclear, rewrite it into clear and meaningful Kurdish.\n\n"
+            "Your task:\n"
+            "Rewrite the news into NATURAL Central Kurdish (Sorani, Arabic script) in a clean modern Telegram format.\n\n"
 
-            "Accuracy rules:\n"
-            "- Preserve the exact meaning and core facts.\n"
-            "- Do NOT change the main topic.\n"
-            "- Do NOT replace countries, assets, or causes with different ones.\n"
-            "- If the news is about gas, do not change it to oil.\n"
-            "- If a country is mentioned, keep it.\n"
-            "- Keep numbers and percentages accurate.\n"
-            "- Do not invent background details.\n\n"
+            "Important writing rules:\n"
+            "- Do NOT translate literally.\n"
+            "- Understand the news first, then rewrite it professionally.\n"
+            "- Keep the core facts exact.\n"
+            "- Keep all important numbers, percentages, and financial facts accurate.\n"
+            "- Do NOT invent facts.\n"
+            "- Do NOT use dramatic clickbait.\n"
+            "- Do NOT output explanations outside the final post.\n"
+            "- Do NOT use markdown like ** or ##.\n"
+            "- Write only in Sorani, but keep financial terms like Fed, USD, CPI, GDP, bond, yield naturally in English when needed.\n\n"
 
-            "Language rules:\n"
-            "- Write only in Central Kurdish (Sorani) using Arabic script.\n"
-            "- Use fluent, natural Sorani.\n"
-            "- Avoid awkward, literal, or machine-like translation.\n"
-            "- Use clear journalistic Kurdish.\n"
-            "- Avoid vague wording when a clearer financial wording exists.\n\n"
+            "Dynamic style rules:\n"
+            "- Start the first line with ONE suitable emoji based on the topic.\n"
+            "- Examples: 💱 forex, 📈 rise, 📉 fall, 🪙 gold, 🛢 oil, ₿ crypto, 🏦 bonds/rates, 🌍 macro/geopolitics.\n"
+            "- Do NOT always use the same emoji. Choose based on the news topic.\n"
+            "- The impact section must be written intelligently based on this specific news, not as a repeated fixed sentence.\n"
+            "- The wording must vary naturally depending on the article.\n\n"
 
-            "Terminology rules:\n"
-            "- Use precise financial and market terminology.\n"
-            "- Preserve important financial terms when needed, such as hedge fund, bond, yield, private credit.\n"
-            "- Do not over-generalize financial entities.\n"
-            "- If a technical term is better kept in English, keep it naturally inside the Kurdish sentence.\n\n"
+            "Output format exactly:\n"
+            "Line 1: [emoji] short strong headline in Kurdish\n"
+            "Line 2: blank line\n"
+            "Line 3: short summary paragraph, 1 to 2 sentences\n"
+            "Line 4: blank line\n"
+            "Line 5: 🧠 کاریگەری:\n"
+            "Line 6: one smart market impact sentence or two short sentences based on the actual news\n\n"
 
-            "Style rules:\n"
-            "- No emojis.\n"
-            "- No hype.\n"
-            "- No dramatic or exaggerated tone.\n"
-            "- Keep it clean, readable, and professional.\n"
-            "- Make it suitable for a Forex and financial Telegram channel.\n\n"
+            "Quality rules:\n"
+            "- Headline should be short and sharp, not generic.\n"
+            "- Summary should be concise and readable.\n"
+            "- Impact should explain why the news matters for markets, traders, prices, sentiment, flows, yields, oil, gold, dollar, or risk appetite.\n"
+            "- Different kinds of news must produce different impact wording.\n\n"
 
-            "Structure:\n"
-            "- First line: a short, strong, market-focused headline that shows direction or impact, not a generic title.\n"
-            "- Second paragraph: the main news in 1 or 2 clear sentences.\n"
-            "- Third paragraph: one short sentence showing the likely market implication.\n\n"
+            "Return only the final formatted Kurdish post body.\n\n"
 
-            "Important:\n"
-            "- Keep terms like Fed, USD, IMF, Brent, WTI, CPI, GDP in English when needed.\n"
-            "- Do not add extra information outside the scope of the news.\n"
-            "- Output only final Kurdish text.\n\n"
-
-            f"Text:\n{content}"
+            f"News:\n{content}"
         )
 
+    def _clean_line(self, line: str) -> str:
+        line = self.forbidden_script_pattern.sub(" ", line)
+        line = self.allowed_inline_pattern.sub(" ", line)
+        line = re.sub(r"[ \t]+", " ", line).strip()
+        return line
+
     def _clean_result(self, text: str) -> str:
-        text = self.forbidden_script_pattern.sub(" ", text)
-        text = self.allowed_punctuation_pattern.sub(" ", text)
-        text = re.sub(r"\s+", " ", text).strip()
-        return text
+        if not text:
+            return ""
+
+        text = text.replace("\r\n", "\n").replace("\r", "\n")
+        raw_lines = text.split("\n")
+
+        cleaned_lines = []
+        blank_pending = False
+
+        for raw in raw_lines:
+            line = self._clean_line(raw)
+
+            if not line:
+                if cleaned_lines:
+                    blank_pending = True
+                continue
+
+            if blank_pending and cleaned_lines:
+                cleaned_lines.append("")
+                blank_pending = False
+
+            cleaned_lines.append(line)
+
+        return "\n".join(cleaned_lines).strip()
 
     def _chat_sync(self, prompt: str) -> str:
         response = self.client.chat.completions.create(
             model=self.model,
-            temperature=0.2,
+            temperature=0.45,
             messages=[{"role": "user", "content": prompt}],
         )
         return response.choices[0].message.content.strip()
@@ -121,7 +138,6 @@ class SmartTranslator:
 
     async def process(self, title: str, description: str = ""):
         try:
-            # Step 1: Filter
             filter_prompt = self._create_filter_prompt(title, description)
             filter_result = await self._chat(filter_prompt)
 
@@ -129,15 +145,14 @@ class SmartTranslator:
                 logger.info(f"⏭️ Skipped: {title[:60]}")
                 return None
 
-            await asyncio.sleep(2)
+            await asyncio.sleep(1)
 
-            # Step 2: Translate with full Gemini-style prompt
             translate_prompt = self._create_translate_prompt(title, description)
             translated = await self._chat(translate_prompt)
 
             cleaned = self._clean_result(translated)
 
-            if not cleaned or len(cleaned) < 10:
+            if not cleaned or len(cleaned) < 20:
                 return None
 
             logger.info(f"✅ Translated: {title[:60]}")
