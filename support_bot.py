@@ -55,13 +55,8 @@ SYSTEM_PROMPT = """تۆ یاریدەدەری پسپۆڕی کەناڵی KurdTrade
 - بەبێ ئیموجیی زیادە"""
 
 # ── State ────────────────────────────────────────────────────────────────────
-# مێژووی گفتوگۆ بەرای هەر کەسێک
 _histories: dict[int, list[dict]] = defaultdict(list)
-
-# کریارەکانی کە ئادمین تەیکئۆڤەری کردووە
 _takeover_active: set[int] = set()
-
-# ئادمین ئێستا لەگەڵ کێ قسە دەکات
 _admin_chatting_with: int | None = None
 
 MAX_HISTORY = 20
@@ -97,7 +92,6 @@ def _ask_groq(user_id: int, user_message: str) -> str:
 
 # ── Handlers ─────────────────────────────────────────────────────────────────
 async def _forward_media_to_admin(update: Update, context: ContextTypes.DEFAULT_TYPE, username: str, user_id: int) -> None:
-    """هەر جۆرە مێدیایەک فۆرواردی بکە بۆ ئادمین"""
     msg = update.message
     prefix = f"👤 <b>{username}</b> [{user_id}]:"
 
@@ -120,17 +114,14 @@ async def _forward_media_to_admin(update: Update, context: ContextTypes.DEFAULT_
 
 
 async def _handle_user_media(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """مێدیای کریار — هەمیشە فۆرواردی بکە بۆ ئادمین"""
     if not update.message:
         return
 
     user_id = update.effective_user.id
     username = update.effective_user.first_name or "کریار"
 
-    # هەمیشە بۆ ئادمین دەنێرێت
     await _forward_media_to_admin(update, context, username, user_id)
 
-    # ئەگەر تەیکئۆڤەر چالاک نەبوو → ئادمین ئاگادار بکەرەوە
     if user_id not in _takeover_active:
         await _notify_admin(context.bot, user_id, username, "📎 مێدیا نێردرا")
         await update.message.reply_text(
@@ -139,7 +130,6 @@ async def _handle_user_media(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
 
 async def _handle_admin_media(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """مێدیای ئادمین — فۆرواردی بکە بۆ کریار"""
     global _admin_chatting_with
 
     if not update.message or _admin_chatting_with is None:
@@ -170,7 +160,6 @@ async def _handle_admin_media(update: Update, context: ContextTypes.DEFAULT_TYPE
 
 
 async def _handle_user_dm(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """پەیامی تێکستی کریار وەردەگرێت"""
     if not update.message or not update.message.text:
         return
 
@@ -178,7 +167,6 @@ async def _handle_user_dm(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     username = update.effective_user.first_name or "کریار"
     text = update.message.text.strip()
 
-    # ئەگەر ئادمین تەیکئۆڤەر کردووە → فۆرواردی بکە بۆ ئادمین
     if user_id in _takeover_active:
         await context.bot.send_message(
             chat_id=ADMIN_ID,
@@ -187,20 +175,16 @@ async def _handle_user_dm(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         )
         return
 
-    # تایپینگ نیشان بدە
     await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
 
-    # AI وەڵام دەداتەوە
     reply = await asyncio.to_thread(_ask_groq, user_id, text)
     await update.message.reply_text(reply)
 
-    # ئەگەر AI گوتی "ئادمین بەم زووانە دێت" → ئادمین ئاگادار بکەرەوە
     if "ئادمین بەم زووانە دێت" in reply or "چاوەڕێ بکە" in reply:
         await _notify_admin(context.bot, user_id, username, text)
 
 
 async def _notify_admin(bot: Bot, user_id: int, username: str, last_msg: str) -> None:
-    """ئادمین ئاگادار دەکرێتەوە"""
     try:
         await bot.send_message(
             chat_id=ADMIN_ID,
@@ -219,7 +203,6 @@ async def _notify_admin(bot: Bot, user_id: int, username: str, last_msg: str) ->
 
 
 async def _handle_admin_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """پەیامی ئادمین — فۆرواردی بکە بۆ کریار"""
     if not update.message or not update.message.text:
         return
 
@@ -243,7 +226,6 @@ async def _handle_admin_message(update: Update, context: ContextTypes.DEFAULT_TY
 
 
 async def _cmd_takeover(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """/takeover_[user_id] — ئادمین کۆنترۆڵ دەگرێت"""
     global _admin_chatting_with
 
     if update.effective_user.id != ADMIN_ID:
@@ -265,7 +247,6 @@ async def _cmd_takeover(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         f"بۆ کۆتاییکردن: /done"
     )
 
-    # کریار ئاگادار بکەرەوە
     try:
         await context.bot.send_message(
             chat_id=user_id,
@@ -276,7 +257,6 @@ async def _cmd_takeover(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 
 
 async def _cmd_done(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """/done — ئادمین تەیکئۆڤەر کۆتایی دێنێت"""
     global _admin_chatting_with
 
     if update.effective_user.id != ADMIN_ID:
@@ -302,7 +282,6 @@ async def _cmd_done(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 
 async def _cmd_history(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """/history_[user_id] — مێژووی گفتوگۆ"""
     if update.effective_user.id != ADMIN_ID:
         return
 
@@ -319,7 +298,7 @@ async def _cmd_history(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         return
 
     lines = []
-    for m in history[-10:]:  # کۆتا ١٠ پەیام
+    for m in history[-10:]:
         role = "👤 کریار" if m["role"] == "user" else "🤖 بۆت"
         lines.append(f"{role}:\n{m['content']}")
 
@@ -327,7 +306,6 @@ async def _cmd_history(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 
 
 async def _cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """/start"""
     await update.message.reply_text(
         "سڵاو! 👋 بەخێربێیت بۆ KurdTrader Support.\n\n"
         "دەتوانیت پرسیارەکانت دەربارەی فۆرێکس، زێڕ، نەوت، و دینار بنێریت.\n\n"
@@ -346,7 +324,6 @@ class SupportBot:
 
         self.app = Application.builder().token(self.token).build()
 
-        # کۆمەندەکان
         self.app.add_handler(CommandHandler("start", _cmd_start))
         self.app.add_handler(
             MessageHandler(
@@ -378,7 +355,7 @@ class SupportBot:
             )
         )
 
-        # مێدیای ئادمین (سەوت، وێنە، ویدیۆ...)
+        # مێدیای ئادمین
         self.app.add_handler(
             MessageHandler(
                 MEDIA & filters.ChatType.PRIVATE & filters.User(ADMIN_ID),
@@ -386,18 +363,18 @@ class SupportBot:
             )
         )
 
-        # تێکستی کریار
+        # ✅ تێکستی کریار — ئادمین و بۆت خۆی دەردەخرێن
         self.app.add_handler(
             MessageHandler(
-                filters.TEXT & filters.ChatType.PRIVATE,
+                filters.TEXT & filters.ChatType.PRIVATE & ~filters.User(ADMIN_ID),
                 _handle_user_dm,
             )
         )
 
-        # مێدیای کریار
+        # ✅ مێدیای کریار — ئادمین و بۆت خۆی دەردەخرێن
         self.app.add_handler(
             MessageHandler(
-                MEDIA & filters.ChatType.PRIVATE,
+                MEDIA & filters.ChatType.PRIVATE & ~filters.User(ADMIN_ID),
                 _handle_user_media,
             )
         )
