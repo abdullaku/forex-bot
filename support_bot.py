@@ -4,14 +4,20 @@ KurdTrader Support Bot
 - AI وەڵام دەداتەوە بە کوردی دەربارەی فۆرێکس و کەناڵ
 - Human Takeover: ئادمین دەتوانێت خۆی قسە بکات لەجیاتی AI
 - ئادمین ئاگادار دەکرێتەوە کاتێک کریار داوای پەیوەندی کرد
+
+چارەسەرکراوەکان:
+  ✅ Conflict هاوتایی بۆت: error_callback بۆ بەردەوامی polling
+  ✅ Groq Rate Limit: کلیلی جیاوازی بۆ سەپۆرت (SUPPORT_GROQ_API_KEY)
 """
 
 import asyncio
 import logging
+import os
 from collections import defaultdict
 
 from groq import Groq
 from telegram import Update, Bot
+from telegram.error import Conflict, NetworkError, TimedOut
 from telegram.ext import (
     Application,
     MessageHandler,
@@ -20,12 +26,16 @@ from telegram.ext import (
     ContextTypes,
 )
 
-from translator import TranslatorConfig
-
 logger = logging.getLogger(__name__)
 
 # ── ئادمین ──────────────────────────────────────────────────────────────────
 ADMIN_ID = 2065036390  # abdulla_botani
+
+# ── Groq API Key — جیاوازی بۆ سەپۆرت تا Rate Limit نەبێت ──────────────────
+# بنێ SUPPORT_GROQ_API_KEY بە کلیلێکی جیاواز لە Koyeb environment variables
+# ئەگەر نەبوو، GROQ_API_KEY بەکاردێنرێت (بەڵام هەردوو بۆت هاوبەشدەبن)
+SUPPORT_GROQ_API_KEY = os.getenv("SUPPORT_GROQ_API_KEY") or os.getenv("GROQ_API_KEY")
+SUPPORT_GROQ_MODEL = "llama-3.3-70b-versatile"
 
 # ── System Prompt ────────────────────────────────────────────────────────────
 SYSTEM_PROMPT = """تۆ یاریدەدەری پسپۆڕی کەناڵی KurdTrader ی (@KurdTraderKRD).
@@ -65,7 +75,7 @@ MAX_HISTORY = 20
 # ── AI ───────────────────────────────────────────────────────────────────────
 def _ask_groq(user_id: int, user_message: str) -> str:
     try:
-        client = Groq(api_key=TranslatorConfig.API_KEY)
+        client = Groq(api_key=SUPPORT_GROQ_API_KEY)
 
         history = _histories[user_id]
         history.append({"role": "user", "content": user_message})
@@ -75,7 +85,7 @@ def _ask_groq(user_id: int, user_message: str) -> str:
         messages = [{"role": "system", "content": SYSTEM_PROMPT}] + _histories[user_id]
 
         response = client.chat.completions.create(
-            model=TranslatorConfig.MODEL,
+            model=SUPPORT_GROQ_MODEL,
             temperature=0.4,
             max_tokens=500,
             messages=messages,
@@ -88,6 +98,19 @@ def _ask_groq(user_id: int, user_message: str) -> str:
     except Exception as e:
         logger.error(f"Groq support error: {e}")
         return "ببورە، کێشەیەک هەیە. تکایە چەند خولەکێک دواتر هەوڵ بدەرەوە."
+
+
+# ── Polling Error Callback ── ✅ چارەسەری Conflict ────────────────────────────
+def _polling_error_callback(error: Exception) -> None:
+    if isinstance(error, Conflict):
+        logger.warning(
+            "⚠️ SupportBot Conflict: نموونەیەکی تری بۆت ئێستا کارێک دەکات. "
+            "ئەمە کاتی redeploy ئاسایییە — polling بەردەوام دەبێت."
+        )
+    elif isinstance(error, (NetworkError, TimedOut)):
+        logger.warning(f"⚠️ SupportBot network error (retry): {error}")
+    else:
+        logger.error(f"❌ SupportBot polling error: {error}")
 
 
 # ── Handlers ─────────────────────────────────────────────────────────────────
@@ -347,31 +370,24 @@ class SupportBot:
             filters.Document.ALL | filters.Sticker.ALL
         )
 
-        # تێکستی ئادمین
         self.app.add_handler(
             MessageHandler(
                 filters.TEXT & filters.ChatType.PRIVATE & filters.User(ADMIN_ID),
                 _handle_admin_message,
             )
         )
-
-        # مێدیای ئادمین
         self.app.add_handler(
             MessageHandler(
                 MEDIA & filters.ChatType.PRIVATE & filters.User(ADMIN_ID),
                 _handle_admin_media,
             )
         )
-
-        # ✅ تێکستی کریار — ئادمین و بۆت خۆی دەردەخرێن
         self.app.add_handler(
             MessageHandler(
                 filters.TEXT & filters.ChatType.PRIVATE & ~filters.User(ADMIN_ID),
                 _handle_user_dm,
             )
         )
-
-        # ✅ مێدیای کریار — ئادمین و بۆت خۆی دەردەخرێن
         self.app.add_handler(
             MessageHandler(
                 MEDIA & filters.ChatType.PRIVATE & ~filters.User(ADMIN_ID),
@@ -381,7 +397,14 @@ class SupportBot:
 
         await self.app.initialize()
         await self.app.start()
-        await self.app.updater.start_polling(drop_pending_updates=True)
+
+        # ✅ چارەسەری Conflict:
+        # drop_pending_updates=True  → پەیامی کۆن بەجێدەهێڵێت
+        # error_callback             → بۆتەکە ناکوژێت کاتی Conflict
+        await self.app.updater.start_polling(
+            drop_pending_updates=True,
+            error_callback=_polling_error_callback,
+        )
 
         logger.info("🤖 SupportBot: گوێگرتن دەستی پێکرد")
 
