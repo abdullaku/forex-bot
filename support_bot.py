@@ -1,16 +1,17 @@
 """
 KurdTrader Support Bot
 ======================
-- AI وەڵام دەداتەوە بە کوردی دەربارەی فۆرێکس و کەناڵ
+- AI وەڵام دەداتەوە بە کوردی دەربارەی فۆرێکس و کەناڵ (Google Gemini)
 - Human Takeover: ئادمین دەتوانێت خۆی قسە بکات لەجیاتی AI
 - ئادمین ئاگادار دەکرێتەوە کاتێک کریار داوای پەیوەندی کرد
 """
 
 import asyncio
 import logging
+import os
 from collections import defaultdict
 
-from groq import Groq
+import google.generativeai as genai
 from telegram import Update, Bot
 from telegram.ext import (
     Application,
@@ -20,19 +21,25 @@ from telegram.ext import (
     ContextTypes,
 )
 
-from translator import TranslatorConfig
-
 logger = logging.getLogger(__name__)
 
 # ── ئادمین ──────────────────────────────────────────────────────────────────
 ADMIN_ID = 2065036390  # abdulla_botani
+
+# ── Gemini Setup ────────────────────────────────────────────────────────────
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
+if not GEMINI_API_KEY:
+    logger.warning("⚠️ GEMINI_API_KEY not set! Support bot AI will not work.")
+else:
+    genai.configure(api_key=GEMINI_API_KEY)
+    GEMINI_MODEL = "gemini-1.5-flash"  # خێرا و باش بۆ چات
 
 # ── System Prompt ────────────────────────────────────────────────────────────
 SYSTEM_PROMPT = """تۆ یاریدەدەری پسپۆڕی کەناڵی KurdTrader ی (@KurdTraderKRD).
 
 زانیارییەکانت:
 - کەناڵی KurdTrader بە بەشداری فۆرێکس و بازاڕی داراییەکان کاردەکات
-- نرخی زێڕ (XAU/USD)، نەوتی برێنت، و دینارێ عێراقی بڵاو دەکرێتەوە
+- نرخی زێڕ (XAU/USD)، نەوتی برێنت، و دیناری عێراقی بڵاو دەکرێتەوە
 - هەواڵی ئابووری جیهانی بە کوردی سۆرانی دەنووسرێت
 - کەناڵەکە بۆ فۆرێکسەران و سەرمایەگوزاران ئامادە کراوە
 
@@ -51,42 +58,61 @@ SYSTEM_PROMPT = """تۆ یاریدەدەری پسپۆڕی کەناڵی KurdTrade
 
 شێواز:
 - کورت و ڕوون
-- پسپۆڕانە بەلام ئاسان
-- بەبێ ئیموجیی زیادە"""
+- پسپۆڕانە بەڵام ئاسان
+- بەبێ ئیمۆجیی زیادە"""
 
 # ── State ────────────────────────────────────────────────────────────────────
 _histories: dict[int, list[dict]] = defaultdict(list)
 _takeover_active: set[int] = set()
 _admin_chatting_with: int | None = None
 
-MAX_HISTORY = 20
+MAX_HISTORY = 10  # کەمتر بۆ کەمکردنەوەی تۆکن
 
 
-# ── AI ───────────────────────────────────────────────────────────────────────
-def _ask_groq(user_id: int, user_message: str) -> str:
+# ── AI (Gemini) ──────────────────────────────────────────────────────────────
+def _ask_gemini(user_id: int, user_message: str) -> str:
+    if not GEMINI_API_KEY:
+        return "ببورە، سیستەمی پشتیوانی بۆت ڕێک نەخراوە. تکایە دواتر هەوڵ بدەرەوە."
+
     try:
-        client = Groq(api_key=TranslatorConfig.API_KEY)
+        # دروستکردنی مۆدێل
+        model = genai.GenerativeModel(GEMINI_MODEL)
 
+        # مێژووی گفتوگۆ
         history = _histories[user_id]
-        history.append({"role": "user", "content": user_message})
-        if len(history) > MAX_HISTORY:
-            _histories[user_id] = history[-MAX_HISTORY:]
 
-        messages = [{"role": "system", "content": SYSTEM_PROMPT}] + _histories[user_id]
+        # ڕێکخستنی chat
+        chat = model.start_chat(history=[])
 
-        response = client.chat.completions.create(
-            model=TranslatorConfig.MODEL,
-            temperature=0.4,
-            max_tokens=500,
-            messages=messages,
-        )
+        # زیادکردنی system prompt و مێژوو
+        messages = [{"role": "user", "parts": [SYSTEM_PROMPT]}]
 
-        reply = response.choices[0].message.content.strip()
+        for msg in history:
+            if msg["role"] == "user":
+                messages.append({"role": "user", "parts": [msg["content"]]})
+            else:
+                messages.append({"role": "model", "parts": [msg["content"]]})
+
+        messages.append({"role": "user", "parts": [user_message]})
+
+        # وەڵام وەرگرتن
+        response = model.generate_content(messages)
+
+        reply = response.text.strip()
+
+        # هێشتنەوەی مێژوو
+        _histories[user_id].append({"role": "user", "content": user_message})
+        if len(_histories[user_id]) > MAX_HISTORY:
+            _histories[user_id] = _histories[user_id][-MAX_HISTORY:]
+
         _histories[user_id].append({"role": "assistant", "content": reply})
+        if len(_histories[user_id]) > MAX_HISTORY:
+            _histories[user_id] = _histories[user_id][-MAX_HISTORY:]
+
         return reply
 
     except Exception as e:
-        logger.error(f"Groq support error: {e}")
+        logger.error(f"Gemini support error: {e}")
         return "ببورە، کێشەیەک هەیە. تکایە چەند خولەکێک دواتر هەوڵ بدەرەوە."
 
 
@@ -177,7 +203,7 @@ async def _handle_user_dm(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 
     await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
 
-    reply = await asyncio.to_thread(_ask_groq, user_id, text)
+    reply = await asyncio.to_thread(_ask_gemini, user_id, text)
     await update.message.reply_text(reply)
 
     if "ئادمین بەم زووانە دێت" in reply or "چاوەڕێ بکە" in reply:
@@ -320,7 +346,7 @@ class SupportBot:
         self.app = None
 
     async def start(self) -> None:
-        logger.info("🤖 SupportBot: دەستی پێکرد")
+        logger.info("🤖 SupportBot: دەستی پێکرد (using Gemini AI)")
 
         self.app = Application.builder().token(self.token).build()
 
@@ -347,7 +373,6 @@ class SupportBot:
             filters.Document.ALL | filters.Sticker.ALL
         )
 
-        # تێکستی ئادمین
         self.app.add_handler(
             MessageHandler(
                 filters.TEXT & filters.ChatType.PRIVATE & filters.User(ADMIN_ID),
@@ -355,7 +380,6 @@ class SupportBot:
             )
         )
 
-        # مێدیای ئادمین
         self.app.add_handler(
             MessageHandler(
                 MEDIA & filters.ChatType.PRIVATE & filters.User(ADMIN_ID),
@@ -363,7 +387,6 @@ class SupportBot:
             )
         )
 
-        # ✅ تێکستی کریار — ئادمین و بۆت خۆی دەردەخرێن
         self.app.add_handler(
             MessageHandler(
                 filters.TEXT & filters.ChatType.PRIVATE & ~filters.User(ADMIN_ID),
@@ -371,7 +394,6 @@ class SupportBot:
             )
         )
 
-        # ✅ مێدیای کریار — ئادمین و بۆت خۆی دەردەخرێن
         self.app.add_handler(
             MessageHandler(
                 MEDIA & filters.ChatType.PRIVATE & ~filters.User(ADMIN_ID),
@@ -383,7 +405,7 @@ class SupportBot:
         await self.app.start()
         await self.app.updater.start_polling(drop_pending_updates=True)
 
-        logger.info("🤖 SupportBot: گوێگرتن دەستی پێکرد")
+        logger.info("🤖 SupportBot: گوێگرتن دەستی پێکرد (Gemini)")
 
     async def stop(self) -> None:
         if self.app:
