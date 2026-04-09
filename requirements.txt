@@ -6,4 +6,3 @@ Flask
 requests
 groq
 pytz
-google-generativeai
