@@ -17,9 +17,3 @@ class Config:
 
     # ── DinarAPI ──────────────────────────────────────────────────────────────
     DINAR_API_TOKEN = os.environ.get("DINAR_API_TOKEN", "")
-
-    # ── Feature flags ─────────────────────────────────────────────────────────
-    ENABLE_SUPPORT_BOT = os.environ.get("ENABLE_SUPPORT_BOT", "true").lower() == "true"
-    ENABLE_NEWS_LOOP = os.environ.get("ENABLE_NEWS_LOOP", "true").lower() == "true"
-    ENABLE_PRICE_POSTER = os.environ.get("ENABLE_PRICE_POSTER", "true").lower() == "true"
-    ENABLE_DINAR_POSTER = os.environ.get("ENABLE_DINAR_POSTER", "true").lower() == "true"
