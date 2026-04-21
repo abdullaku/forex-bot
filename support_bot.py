@@ -404,11 +404,6 @@ class SupportBot:
         await self.app.updater.start_polling(
             drop_pending_updates=True,
             error_callback=_polling_error_callback,
-            poll_interval=1.0,
-            timeout=10,
-            bootstrap_retries=5,
-            read_timeout=15,
-            connect_timeout=15,
         )
 
         logger.info("🤖 SupportBot: گوێگرتن دەستی پێکرد")
