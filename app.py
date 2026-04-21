@@ -49,7 +49,10 @@ class ForexBotApp:
 
     async def setup(self) -> None:
         await setup_db()
-        await self.support_bot.start()
+
+        if self.config.ENABLE_SUPPORT_BOT:
+            await self.support_bot.start()
+
         logger.info("🚀 Bot Started")
 
     async def process_calendar(self, now: datetime, current_day: str) -> None:
@@ -137,8 +140,15 @@ class ForexBotApp:
     async def run(self) -> None:
         await self.setup()
 
-        asyncio.create_task(self.price_poster.run())
-        asyncio.create_task(self.dinar_poster.run())
+        if self.config.ENABLE_PRICE_POSTER:
+            asyncio.create_task(self.price_poster.run())
+
+        if self.config.ENABLE_DINAR_POSTER:
+            asyncio.create_task(self.dinar_poster.run())
+
+        if not self.config.ENABLE_NEWS_LOOP:
+            while True:
+                await asyncio.sleep(3600)
 
         while True:
             try:
