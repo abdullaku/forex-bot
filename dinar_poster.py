@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 DINAR_HOME_URL = "https://dinarapi.hediworks.site"
 
 # ── ئەندازەی گۆڕانکاری بۆ پۆست کردن (دینار) ──────────────────
-PRICE_CHANGE_THRESHOLD = 1000  # هەر 1,000 دینار گۆڕانکاری
+PRICE_CHANGE_THRESHOLD = 500  # هەر 500 دینار کۆی گۆڕانکاری
 
 
 class DinarPoster:
@@ -25,6 +25,7 @@ class DinarPoster:
         self.config = Config()
         self._last_post_slot = None
         self._last_posted_value: float | None = None  # نرخی کاتی پۆستی دوایین
+        self._accumulated_change: float = 0  # کۆی گۆڕانکاری هەڵگیراو
 
     def _headers(self) -> dict:
         return {
@@ -74,6 +75,8 @@ class DinarPoster:
     def _should_post(self, new_value: float) -> tuple[bool, str]:
         """
         دیاری دەکات ئایا دەبێت پۆست بکات یان نا.
+        کۆی گۆڕانکاری هەڵدەگرێت — نەک لە نرخی دوایین پۆستکراو.
+        نموونە: 300 + 200 = 500 → پۆست دەکات
         دەگەڕێتەوە (دەبێت_پۆست_بکات, ئاراستەی_گۆڕانکاری)
         ئاراستە: 'up' بەرزبوونەوە، 'down' دابەزین، '' یەکەم جار
         """
@@ -82,9 +85,17 @@ class DinarPoster:
             return True, ""
 
         diff = new_value - self._last_posted_value
+        self._accumulated_change += diff
 
-        if abs(diff) >= PRICE_CHANGE_THRESHOLD:
-            direction = "up" if diff > 0 else "down"
+        logger.info(
+            f"📊 کۆی گۆڕانکاری={self._accumulated_change:+,.0f} | "
+            f"نرخی ئێستا={new_value:,.0f} | "
+            f"نرخی دوایین={self._last_posted_value:,.0f}"
+        )
+
+        if abs(self._accumulated_change) >= PRICE_CHANGE_THRESHOLD:
+            direction = "up" if self._accumulated_change > 0 else "down"
+            self._accumulated_change = 0  # سفر دەکاتەوە بۆ دەوری داهاتوو
             return True, direction
 
         return False, ""
@@ -143,15 +154,13 @@ class DinarPoster:
                 logger.warning("⚠️ DinarPoster: نرخ نەگەیشت")
                 return
 
-            # ── بەررسی ئایا نرخ بەتەواوی گۆڕاوە ──────────────────────────
+            # ── بەررسی ئایا کۆی گۆڕانکاری گەیشتە 500 ──────────────────────────
             should_post, direction = self._should_post(value)
 
             if not should_post:
-                diff = abs(value - self._last_posted_value)
                 logger.info(
-                    f"⏭️ نرخ نەگۆڕا بەتەواوی | نرخی ئێستا={value:,.0f} | "
-                    f"نرخی کۆن={self._last_posted_value:,.0f} | "
-                    f"جیاوازی={diff:,.0f} | پێویستە {PRICE_CHANGE_THRESHOLD:,} گۆڕانکاری"
+                    f"⏭️ کۆی گۆڕانکاری هێشتا نەگەیشتە {PRICE_CHANGE_THRESHOLD:,} | "
+                    f"نرخی ئێستا={value:,.0f}"
                 )
                 return
 
