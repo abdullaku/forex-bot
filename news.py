@@ -1,6 +1,8 @@
 import asyncio
 import logging
-from datetime import datetime
+import re
+from datetime import datetime, timezone
+from email.utils import parsedate_to_datetime
 from urllib.parse import urljoin
 
 import aiohttp
@@ -13,9 +15,9 @@ logger = logging.getLogger(__name__)
 
 class NewsScraper:
     """
-    Official macro / Forex news sources only.
+    Official macro / Forex news scraper.
 
-    Active sources:
+    Active sources only:
     - Fed
     - BLS
     - BEA
@@ -25,18 +27,13 @@ class NewsScraper:
     - ONS
     - BoJ
 
-    Removed from active fetching:
-    - CNBC
-    - Bloomberg
-    - Fox Business
-    - CNBC Europe
-    - CNBC Asia
-    - Bloomberg Quicktake
-    - Iraq Business News
-    - ForexFactory calendar
-
-    No keyword filtering is used here.
-    Any item found from these official sources is returned.
+    Important:
+    - No AI filtering here.
+    - No time limit.
+    - No post/count limit.
+    - No per-feed item limit.
+    - The bot decides by event type, not by a fixed number of posts.
+    - Deduplication is still used so the same URL/title is not posted twice.
     """
 
     OFFICIAL_SOURCES = {
@@ -107,6 +104,96 @@ class NewsScraper:
         },
     }
 
+    EVENT_TYPES = {
+        "inflation": [
+            "cpi",
+            "consumer price index",
+            "inflation",
+            "ppi",
+            "producer price index",
+            "pce",
+            "personal consumption expenditures",
+            "deflator",
+        ],
+        "jobs": [
+            "employment situation",
+            "nonfarm payroll",
+            "non-farm payroll",
+            "nfp",
+            "payrolls",
+            "unemployment",
+            "jobless",
+            "labor market",
+            "labour market",
+            "wages",
+            "earnings",
+            "average hourly earnings",
+        ],
+        "growth": [
+            "gdp",
+            "gross domestic product",
+            "retail sales",
+            "industrial production",
+            "trade balance",
+            "international trade",
+            "pmi",
+            "manufacturing",
+            "services",
+        ],
+        "central_bank": [
+            "interest rate",
+            "rate decision",
+            "policy rate",
+            "bank rate",
+            "cash rate",
+            "federal funds rate",
+            "monetary policy",
+            "fomc",
+            "mpc",
+            "governing council",
+            "press conference",
+            "economic projections",
+            "summary of economic projections",
+            "outlook report",
+            "summary of opinions",
+        ],
+        "key_speech": [
+            "powell",
+            "lagarde",
+            "bailey",
+            "ueda",
+        ],
+    }
+
+    BLOCKED_KEYWORDS = [
+        "supervision",
+        "regulation",
+        "regulatory",
+        "community bank",
+        "consumer compliance",
+        "enforcement action",
+        "working paper",
+        "research paper",
+        "staff paper",
+        "conference",
+        "webinar",
+        "museum",
+        "holiday",
+        "appointment",
+        "vacancy",
+        "procurement",
+        "consultation",
+        "annual report",
+        "methodology",
+        "classification",
+        "taxonomy",
+        "user guide",
+        "newsletter",
+        "podcast",
+        "blog",
+        "education",
+    ]
+
     def __init__(self):
         self.headers = {
             "User-Agent": (
@@ -116,22 +203,83 @@ class NewsScraper:
         }
         self.parser = NewsParser()
 
-    def _parse_atom_entry(
-        self,
-        entry,
-        source_name: str,
-        category: str,
-        currency: str,
-    ) -> dict:
+    def _clean_title(self, title: str) -> str:
+        return re.sub(r"\s+", " ", title or "").strip()
+
+    def _parse_date(self, value: str):
+        if not value:
+            return None
+
+        value = value.strip()
+
+        try:
+            parsed = parsedate_to_datetime(value)
+            if parsed.tzinfo is None:
+                parsed = parsed.replace(tzinfo=timezone.utc)
+            return parsed.astimezone(timezone.utc)
+        except Exception:
+            pass
+
+        try:
+            parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+            if parsed.tzinfo is None:
+                parsed = parsed.replace(tzinfo=timezone.utc)
+            return parsed.astimezone(timezone.utc)
+        except Exception:
+            return None
+
+    def _classify_event(self, title: str, summary: str = "") -> str:
+        text = f"{title} {summary}".lower()
+
+        for event_type, keywords in self.EVENT_TYPES.items():
+            if any(keyword in text for keyword in keywords):
+                return event_type
+
+        return "other"
+
+    def _is_macro_relevant(self, title: str, summary: str = "") -> bool:
+        text = f"{title} {summary}".lower()
+
+        if any(blocked in text for blocked in self.BLOCKED_KEYWORDS):
+            return False
+
+        return self._classify_event(title, summary) != "other"
+
+    def _source_priority(self, source: str) -> int:
+        priorities = {
+            "BLS": 100,
+            "Fed": 95,
+            "BEA": 90,
+            "ECB": 85,
+            "BoE": 80,
+            "ONS": 75,
+            "Eurostat": 70,
+            "BoJ": 65,
+        }
+        return priorities.get(source, 0)
+
+    def _article_sort_key(self, article: dict):
+        parsed = self._parse_date(article.get("published_at", ""))
+        if parsed is None:
+            parsed = datetime.min.replace(tzinfo=timezone.utc)
+
+        return (parsed, self._source_priority(article.get("source", "")))
+
+    def _attach_event_type(self, article: dict) -> dict:
+        article["event_type"] = self._classify_event(
+            article.get("title", ""),
+            article.get("summary", ""),
+        )
+        return article
+
+    def _parse_atom_entry(self, entry, source_name: str, category: str, currency: str) -> dict:
         title_tag = entry.find("title")
-        title = title_tag.get_text(strip=True) if title_tag else ""
+        title = self._clean_title(title_tag.get_text(strip=True) if title_tag else "")
 
         summary_tag = entry.find("summary") or entry.find("content")
         summary = ""
         if summary_tag:
-            summary = self.parser._clean_summary(
-                summary_tag.get_text(" ", strip=True)
-            )
+            summary = self.parser._clean_summary(summary_tag.get_text(" ", strip=True))
 
         link_tag = entry.find("link")
         url = ""
@@ -142,10 +290,10 @@ class NewsScraper:
         published_at = (
             published_tag.get_text(strip=True)
             if published_tag
-            else datetime.now().isoformat()
+            else datetime.now(timezone.utc).isoformat()
         )
 
-        return {
+        article = {
             "title": title,
             "summary": summary[:500],
             "url": url,
@@ -157,6 +305,8 @@ class NewsScraper:
             "published_at": published_at,
         }
 
+        return self._attach_event_type(article)
+
     def _parse_html_articles(
         self,
         html: str,
@@ -166,19 +316,16 @@ class NewsScraper:
         currency: str,
     ) -> list:
         """
-        HTML fallback for official pages that do not expose a simple RSS feed.
-
-        No keyword filter is used.
-        It extracts links from the official page and returns them as articles.
+        Strict fallback for official pages that are not simple RSS feeds.
+        No count/time limit is used, but navigation/menu links are blocked.
         """
         soup = BeautifulSoup(html, "html.parser")
         articles = []
         seen_titles = set()
 
         for link in soup.find_all("a", href=True):
-            title = link.get_text(" ", strip=True)
-
-            if not title or len(title) < 8:
+            title = self._clean_title(link.get_text(" ", strip=True))
+            if not title or len(title) < 12:
                 continue
 
             title_key = title.lower()
@@ -186,34 +333,35 @@ class NewsScraper:
                 continue
 
             url = urljoin(base_url, link["href"])
+
+            if not self._is_macro_relevant(title):
+                continue
+
+            if source_name == "BEA" and "/news/" not in url and "/data/" not in url:
+                continue
+
+            if source_name == "Eurostat" and "euro-indicators" not in url and "products-euro-indicators" not in url:
+                continue
+
             seen_titles.add(title_key)
 
-            articles.append(
-                {
-                    "title": title,
-                    "summary": "",
-                    "url": url,
-                    "source": source_name,
-                    "category": category,
-                    "currency": currency,
-                    "pairs": self.parser.detect_pairs(title),
-                    "image_url": None,
-                    "published_at": datetime.now().isoformat(),
-                }
-            )
+            article = {
+                "title": title,
+                "summary": "",
+                "url": url,
+                "source": source_name,
+                "category": category,
+                "currency": currency,
+                "pairs": self.parser.detect_pairs(title),
+                "image_url": None,
+                "published_at": datetime.now(timezone.utc).isoformat(),
+            }
 
-            if len(articles) >= 10:
-                break
+            articles.append(self._attach_event_type(article))
 
         return articles
 
-    async def fetch_url(
-        self,
-        session,
-        source_name: str,
-        source_info: dict,
-        url: str,
-    ) -> list:
+    async def fetch_url(self, session, source_name: str, source_info: dict, url: str) -> list:
         articles = []
         category = source_info["category"]
         currency = source_info["currency"]
@@ -221,37 +369,49 @@ class NewsScraper:
         try:
             async with session.get(url, timeout=20) as resp:
                 if resp.status != 200:
-                    logger.warning(
-                        f"{source_name} returned HTTP {resp.status}: {url}"
-                    )
+                    logger.warning(f"{source_name} returned HTTP {resp.status}: {url}")
                     return articles
 
                 text = await resp.text()
                 soup = BeautifulSoup(text, "xml")
-
                 items = soup.find_all("item")
                 entries = soup.find_all("entry")
 
                 if items:
-                    for item in items[:20]:
+                    for item in items:
                         article = self.parser.parse_rss_item(
                             item=item,
                             source_name=source_name,
                             category=category,
                         )
                         article["currency"] = currency
+                        article = self._attach_event_type(article)
+
+                        if not self._is_macro_relevant(
+                            article.get("title", ""),
+                            article.get("summary", ""),
+                        ):
+                            continue
+
                         articles.append(article)
 
                     return articles
 
                 if entries:
-                    for entry in entries[:20]:
+                    for entry in entries:
                         article = self._parse_atom_entry(
                             entry=entry,
                             source_name=source_name,
                             category=category,
                             currency=currency,
                         )
+
+                        if not self._is_macro_relevant(
+                            article.get("title", ""),
+                            article.get("summary", ""),
+                        ):
+                            continue
+
                         articles.append(article)
 
                     return articles
@@ -264,23 +424,13 @@ class NewsScraper:
                     currency=currency,
                 )
 
-        except Exception as e:
-            logger.error(f"Error fetching {source_name} from {url}: {e}")
+        except Exception as exc:
+            logger.error(f"Error fetching {source_name} from {url}: {exc}")
             return articles
 
-    async def fetch_source(
-        self,
-        session,
-        source_name: str,
-        source_info: dict,
-    ) -> list:
+    async def fetch_source(self, session, source_name: str, source_info: dict) -> list:
         tasks = [
-            self.fetch_url(
-                session=session,
-                source_name=source_name,
-                source_info=source_info,
-                url=url,
-            )
+            self.fetch_url(session, source_name, source_info, url)
             for url in source_info["urls"]
         ]
 
@@ -296,11 +446,7 @@ class NewsScraper:
     async def fetch_all(self) -> list:
         async with aiohttp.ClientSession(headers=self.headers) as session:
             tasks = [
-                self.fetch_source(
-                    session=session,
-                    source_name=name,
-                    source_info=info,
-                )
+                self.fetch_source(session, source_name=name, source_info=info)
                 for name, info in self.OFFICIAL_SOURCES.items()
             ]
 
@@ -334,4 +480,5 @@ class NewsScraper:
 
                 all_articles.append(article)
 
+        all_articles.sort(key=self._article_sort_key, reverse=True)
         return all_articles
