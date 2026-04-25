@@ -1,14 +1,18 @@
-from economic_calendar import CalendarService
 from news import NewsScraper as NewsService
 
 
 class SourcesManager:
-    def __init__(self):
-        self.calendar_service = CalendarService()
-        self.news_service = NewsService()
+    """
+    Official news manager only.
 
-    async def fetch_calendar(self):
-        return await self.calendar_service.fetch_calendar()
+    This manager fetches news only from news.py:
+    Fed, BLS, BEA, ECB, Eurostat, BoE, ONS, BoJ.
+
+    ForexFactory / economic_calendar is no longer used here.
+    """
+
+    def __init__(self):
+        self.news_service = NewsService()
 
     async def fetch_all(self):
         return await self.news_service.fetch_all()
