@@ -18,6 +18,17 @@ logger = logging.getLogger(__name__)
 
 
 class ForexBotApp:
+    """
+    Main bot app.
+
+    News behavior:
+    - Only official macro/Forex sources are fetched through news.py.
+    - No ForexFactory calendar.
+    - No CNBC/Bloomberg/Fox/Iraq Business News.
+    - No AI filtering.
+    - AI only formats/translates official news.
+    """
+
     def __init__(self):
         self.config = Config()
 
@@ -32,7 +43,7 @@ class ForexBotApp:
         )
 
         self.scraper = SourcesManager()
-        self.last_calendar_day = ""
+
         self.price_poster = PricePoster(self.telegram, self.facebook)
         self.dinar_poster = DinarPoster(self.telegram, self.facebook)
         self.support_bot = SupportBot(token=self.config.SUPPORT_TOKEN)
@@ -42,27 +53,14 @@ class ForexBotApp:
 
     def get_time_strings(self):
         now = self.get_now()
-        current_day = now.strftime("%Y-%m-%d")
         current_time = now.strftime("%H:%M")
         current_date = now.strftime("%d/%m/%Y")
-        return now, current_day, current_time, current_date
+        return now, current_time, current_date
 
     async def setup(self) -> None:
         await setup_db()
         await self.support_bot.start()
-        logger.info("🚀 Bot Started")
-
-    async def process_calendar(self, now: datetime, current_day: str) -> None:
-        if now.hour == 9 and self.last_calendar_day != current_day:
-            events = await self.scraper.fetch_calendar()
-
-            if events:
-                tg_msg = self.scraper.calendar_service.build_telegram_msg(events)
-                fb_msg = self.scraper.calendar_service.build_facebook_msg(events)
-                await self.telegram.send_message(tg_msg)
-                await self.facebook.post(fb_msg)
-
-            self.last_calendar_day = current_day
+        logger.info("🚀 Bot Started - Official macro news only")
 
     async def process_article(
         self,
@@ -70,19 +68,36 @@ class ForexBotApp:
         current_time: str,
         current_date: str,
     ) -> None:
-        url = article["url"].split("?")[0]
+        url = (article.get("url") or "").split("?")[0].strip()
+
+        if not url:
+            logger.warning("⚠️ Article skipped because URL is missing")
+            return
 
         if await is_posted(url):
             return
 
-        text = await process_smart_news(article["title"], article.get("summary", ""))
+        title = article.get("title", "").strip()
+        summary = article.get("summary", "").strip()
+        source = article.get("source", "Official Source")
+        currency = article.get("currency", "")
 
-        if not text:
-            logger.info(f"⏭️ Skipped (marked as seen): {url}")
+        if not title:
+            logger.warning(f"⚠️ Article skipped because title is missing: {url}")
             await mark_posted(url)
             return
 
-        source = article.get("source", "News")
+        text = await process_smart_news(
+            title=title,
+            description=summary,
+            source=source,
+            currency=currency,
+        )
+
+        if not text:
+            logger.info(f"⚠️ Formatting failed, marked as seen: {url}")
+            await mark_posted(url)
+            return
 
         telegram_msg = TextFormatter.build_telegram_message(
             text=text,
@@ -108,6 +123,7 @@ class ForexBotApp:
                 image_url=article.get("image_url"),
             )
             tg_ok = True
+            logger.info(f"✅ Telegram posted: {source} - {title[:70]}")
         except Exception as e:
             logger.error(f"Telegram error: {e}")
 
@@ -118,6 +134,7 @@ class ForexBotApp:
                 link_url=url,
             )
             fb_ok = True
+            logger.info(f"✅ Facebook posted: {source} - {title[:70]}")
         except Exception as e:
             logger.error(f"Facebook error: {e}")
 
@@ -127,12 +144,20 @@ class ForexBotApp:
     async def process_news(self, current_time: str, current_date: str) -> None:
         articles = await self.scraper.fetch_all()
 
+        if not articles:
+            logger.info("ℹ️ No new official news found")
+            return
+
+        logger.info(f"📰 Found {len(articles)} official news items")
+
         for article in articles:
             await self.process_article(
                 article=article,
                 current_time=current_time,
                 current_date=current_date,
             )
+
+            await asyncio.sleep(self.config.POST_DELAY)
 
     async def run(self) -> None:
         await self.setup()
@@ -142,10 +167,12 @@ class ForexBotApp:
 
         while True:
             try:
-                now, current_day, current_time, current_date = self.get_time_strings()
+                _, current_time, current_date = self.get_time_strings()
 
-                await self.process_calendar(now, current_day)
-                await self.process_news(current_time, current_date)
+                await self.process_news(
+                    current_time=current_time,
+                    current_date=current_date,
+                )
 
                 await asyncio.sleep(self.config.CHECK_INTERVAL)
 
