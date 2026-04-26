@@ -22,10 +22,7 @@ class ForexBotApp:
     Main bot app.
 
     News behavior:
-    - Only official macro/Forex sources are fetched through news.py.
-    - No ForexFactory calendar.
-    - No CNBC/Bloomberg/Fox/Iraq Business News.
-    - No AI filtering.
+    - Official macro/Forex sources are fetched through manager.py / news.py.
     - AI only formats/translates official news.
     """
 
@@ -69,8 +66,15 @@ class ForexBotApp:
         current_date: str,
     ) -> str:
         """
-        Process one official news article and return a status string.
-        This makes the log explain why news did or did not get posted.
+        Process one official news article.
+
+        Returns:
+        - posted
+        - already_posted
+        - format_failed
+        - send_failed
+        - missing_url
+        - missing_title
         """
         url = (article.get("url") or "").split("?")[0].strip()
 
@@ -100,8 +104,8 @@ class ForexBotApp:
         )
 
         if not text:
-            # Do not mark as posted. If Groq/API/formatting temporarily fails,
-            # retry this real news later instead of losing it forever.
+            # گرنگ: ئەگەر formatting/Groq شکست بخوات، posted مەکە.
+            # دواتر جارێکی تر retry دەکرێتەوە.
             logger.warning(
                 f"Formatting failed, will retry later: {source} - {title[:70]}"
             )
@@ -162,6 +166,9 @@ class ForexBotApp:
             logger.info("No official news found from sources")
             return
 
+        # تەنها 10 هەواڵی سەرەوە چێک بکە، نەک 110 هەموو جار.
+        articles = articles[:10]
+
         logger.info(f"Found {len(articles)} official news items")
 
         stats = {
@@ -213,7 +220,7 @@ class ForexBotApp:
                 await asyncio.sleep(self.config.CHECK_INTERVAL)
 
             except Exception as e:
-                logger.error(f"Error: {e}")
+                logger.error(f"Error: {type(e).__name__}: {e}")
                 await asyncio.sleep(60)
 
 
