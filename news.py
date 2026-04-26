@@ -222,6 +222,7 @@ class NewsScraper:
             )
         }
         self.parser = NewsParser()
+        self._feed_cache: dict = {}  # url -> {"etag": ..., "last_modified": ...}
 
     def _clean_title(self, title: str) -> str:
         return re.sub(r"\s+", " ", title or "").strip()
@@ -386,11 +387,34 @@ class NewsScraper:
         category = source_info["category"]
         currency = source_info["currency"]
 
+        # ETag / Last-Modified هێڵەکان زیاد بکە
+        cached = self._feed_cache.get(url, {})
+        req_headers = {}
+        if cached.get("etag"):
+            req_headers["If-None-Match"] = cached["etag"]
+        elif cached.get("last_modified"):
+            req_headers["If-Modified-Since"] = cached["last_modified"]
+
         try:
-            async with session.get(url, timeout=20) as resp:
+            async with session.get(url, timeout=20, headers=req_headers) as resp:
+
+                # 304 = هیچ نوێیەک نییە، زوو تێپەڕ بکە
+                if resp.status == 304:
+                    logger.debug(f"{source_name} not modified: {url}")
+                    return articles
+
                 if resp.status != 200:
                     logger.warning(f"{source_name} returned HTTP {resp.status}: {url}")
                     return articles
+
+                # ETag / Last-Modified ذەخیرە بکە بۆ جاری داهاتوو
+                new_cache = {}
+                if resp.headers.get("ETag"):
+                    new_cache["etag"] = resp.headers["ETag"]
+                if resp.headers.get("Last-Modified"):
+                    new_cache["last_modified"] = resp.headers["Last-Modified"]
+                if new_cache:
+                    self._feed_cache[url] = new_cache
 
                 text = await resp.text()
                 soup = BeautifulSoup(text, "xml")
