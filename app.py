@@ -145,8 +145,6 @@ class ForexBotApp:
             logger.info("No official news found from sources")
             return
 
-        # گرنگ: تەنها 10 هەواڵی سەرەوە چێک دەکات، نەک 110 هەموو جار
-        articles = articles[:10]
 
         logger.info(f"Found {len(articles)} official news items")
 
