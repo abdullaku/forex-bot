@@ -9,8 +9,8 @@ class Config:
     FACEBOOK_PAGE_TOKEN = os.environ.get("FACEBOOK_PAGE_TOKEN")
     FACEBOOK_PAGE_ID = os.environ.get("FACEBOOK_PAGE_ID")
 
-    CHECK_INTERVAL = 300
-    POST_DELAY = 10
+    CHECK_INTERVAL = 30   # هەر 30 چرکە — ETag بوونی هەیە بۆیە سەرباری زیادە نییە
+    POST_DELAY = 3    # 3 چرکە نێوان پۆستەکان
     BAGHDAD_TZ = timezone(timedelta(hours=3))
 
     CHANNEL_USERNAME = os.environ.get("CHANNEL_USERNAME", "@KurdTraderKRD")
