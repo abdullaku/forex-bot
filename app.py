@@ -18,14 +18,6 @@ logger = logging.getLogger(__name__)
 
 
 class ForexBotApp:
-    """
-    Main bot app.
-
-    News behavior:
-    - Official macro/Forex sources are fetched through manager.py / news.py.
-    - AI only formats/translates official news.
-    """
-
     def __init__(self):
         self.config = Config()
 
@@ -65,17 +57,6 @@ class ForexBotApp:
         current_time: str,
         current_date: str,
     ) -> str:
-        """
-        Process one official news article.
-
-        Returns:
-        - posted
-        - already_posted
-        - format_failed
-        - send_failed
-        - missing_url
-        - missing_title
-        """
         url = (article.get("url") or "").split("?")[0].strip()
 
         if not url:
@@ -104,8 +85,6 @@ class ForexBotApp:
         )
 
         if not text:
-            # گرنگ: ئەگەر formatting/Groq شکست بخوات، posted مەکە.
-            # دواتر جارێکی تر retry دەکرێتەوە.
             logger.warning(
                 f"Formatting failed, will retry later: {source} - {title[:70]}"
             )
@@ -166,7 +145,7 @@ class ForexBotApp:
             logger.info("No official news found from sources")
             return
 
-        # تەنها 10 هەواڵی سەرەوە چێک بکە، نەک 110 هەموو جار.
+        # گرنگ: تەنها 10 هەواڵی سەرەوە چێک دەکات، نەک 110 هەموو جار
         articles = articles[:10]
 
         logger.info(f"Found {len(articles)} official news items")
