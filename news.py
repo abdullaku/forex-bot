@@ -223,6 +223,7 @@ class NewsScraper:
         }
         self.parser = NewsParser()
         self._feed_cache: dict = {}  # url -> {"etag": ..., "last_modified": ...}
+        self._start_time = datetime.now(timezone.utc)  # تەنها هەواڵی دوای ئەم کاتە دەنێرێت
 
     def _clean_title(self, title: str) -> str:
         return re.sub(r"\s+", " ", title or "").strip()
@@ -515,6 +516,10 @@ class NewsScraper:
                 dedupe_key = url or title_key
 
                 if dedupe_key in seen_urls or title_key in seen_titles:
+                    continue
+
+                published = self._parse_date(article.get("published_at", ""))
+                if published is not None and published < self._start_time:
                     continue
 
                 seen_urls.add(dedupe_key)
