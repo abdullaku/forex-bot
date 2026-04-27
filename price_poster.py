@@ -20,21 +20,24 @@ TOKYO_TZ    = pytz.timezone("Asia/Tokyo")
 SESSIONS = [
     {
         "id":      "asia",
-        "name_ku": "🌏 سێشنی ئەسیا",
+        "name_ku": "سێشنی ئەسیا",
+        "emoji":   "🌏",
         "tz":      TOKYO_TZ,
         "open_hour":   9,
         "open_minute": 0,
     },
     {
         "id":      "london",
-        "name_ku": "🇬🇧 سێشنی لۆندەن",
+        "name_ku": "سێشنی لەندەن",
+        "emoji":   "🇬🇧",
         "tz":      LONDON_TZ,
         "open_hour":   8,
         "open_minute": 0,
     },
     {
         "id":      "newyork",
-        "name_ku": "🇺🇸 سێشنی نیویۆرک",
+        "name_ku": "سێشنی نیویۆرک",
+        "emoji":   "🇺🇸",
         "tz":      NEW_YORK_TZ,
         "open_hour":   9,
         "open_minute": 30,
@@ -125,27 +128,27 @@ class PricePoster:
             return f"{R}  {label}  {val}{ar} {pct}\n"
 
         return (
-            f"{R}📊 {session['name_ku']} کرایەوە\n\n"
+            f"{R}📊 {session['name_ku']} کرایەوە {session['emoji']}\n\n"
 
-            f"{R}🏅 کانزا\n"
-            + row(self.GOLD_TICKER,   "🥇 زێڕ  (XAU)", 2)
-            + row(self.SILVER_TICKER, "🥈 زیو  (XAG)", 3)
+            f"{R}🏅 Metals\n"
+            + row(self.GOLD_TICKER,   "🥇 Gold    (XAU)", 2)
+            + row(self.SILVER_TICKER, "🥈 Silver  (XAG)", 3)
 
-            + f"\n{R}🛢️ نەوت\n"
-            + row(self.BRENT_TICKER, "🛢 برێنت", 2)
-            + row(self.WTI_TICKER,   "🛢 WTI   ", 2)
+            + f"\n{R}🛢️ Oil\n"
+            + row(self.BRENT_TICKER, "🛢 Brent  ", 2)
+            + row(self.WTI_TICKER,   "🛢 WTI    ", 2)
 
-            + f"\n{R}💱 فۆرێکس\n"
+            + f"\n{R}💱 Forex\n"
             + row(self.EURUSD_TICKER, "🇪🇺 EUR/USD", 4)
             + row(self.GBPUSD_TICKER, "🇬🇧 GBP/USD", 4)
             + row(self.USDJPY_TICKER, "🇯🇵 USD/JPY", 3)
             + row(self.DXY_TICKER,    "💵 DXY    ", 3)
 
-            + f"\n{R}📈 بازاڕی پشکەکان\n"
-            + row(self.SP500_TICKER, "📊 S&P 500 ", 0)
-            + row(self.DOW_TICKER,   "📉 داو جۆنز", 0)
+            + f"\n{R}📈 Stock Market\n"
+            + row(self.SP500_TICKER, "📊 S&P 500  ", 0)
+            + row(self.DOW_TICKER,   "📉 Dow Jones", 0)
 
-            + f"\n{R}₿ کریپتۆ\n"
+            + f"\n{R}₿ Crypto\n"
             + row(self.BTC_TICKER, "₿ Bitcoin  ", 0)
 
             + f"\n{R}🕐 {time_str}  |  {date_str}\n"
