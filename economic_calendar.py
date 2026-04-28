@@ -1,16 +1,17 @@
 import re
+import asyncio
 import logging
 from datetime import datetime, timezone, timedelta
+from typing import Optional
 
 import aiohttp
 
 logger = logging.getLogger(__name__)
 
-RTL = "\u200f"  # Right-to-Left mark — دەستپێکی نووسین لای ڕاست
-
 
 class CalendarService:
     BAGHDAD_TZ = timezone(timedelta(hours=3))
+    FF_URL = "https://nfs.faireconomy.media/ff_calendar_thisweek.json"
 
     CURRENCY_FLAGS = {
         "USD": "🇺🇸",
@@ -24,181 +25,212 @@ class CalendarService:
         "CNY": "🇨🇳",
     }
 
-    TITLE_TRANSLATE = {
-        # ── داتای نرخ و ئینفلاسیۆن ──
-        "CPI":                              "نرخی بەرزی ژیان (CPI)",
-        "Core CPI":                         "نرخی بەرزی ژیان بێ خۆراک و وزە",
-        "PPI":                              "نرخی بەرهەمهێنان (PPI)",
-        "Core PPI":                         "نرخی بەرهەمهێنان بێ خۆراک و وزە",
-        "PCE Price Index":                  "پێوەری نرخی PCE",
-        "Core PCE Price Index":             "پێوەری نرخی PCE بێ خۆراک و وزە",
-        "Inflation Rate":                   "ڕێژەی ئینفلاسیۆن",
-        "Inflation":                        "ئینفلاسیۆن",
+    def __init__(self, send_callback):
+        """
+        send_callback: async function(message: str) -> None
+            Called by this service to send messages to Telegram/Facebook.
+        """
+        self._send = send_callback
+        self._morning_posted: Optional[str] = None   # date string YYYY-MM-DD
+        self._alert_sent: set = set()                # event_ids already alerted
+        self._result_sent: set = set()               # event_ids already result-posted
 
-        # ── کار و کارمەند ──
-        "Non-Farm Payrolls":                "ژمارەی کارمەندی نوێ (NFP)",
-        "Nonfarm Payrolls":                 "ژمارەی کارمەندی نوێ (NFP)",
-        "NFP":                              "ژمارەی کارمەندی نوێ (NFP)",
-        "Unemployment Rate":                "ڕێژەی بێکاری",
-        "Unemployment":                     "بێکاری",
-        "Average Hourly Earnings":          "تێکڕای مووچەی کاتژمێری",
-        "Jobless Claims":                   "داواکاری بیمەی بێکاری",
-        "Initial Jobless Claims":           "داواکاری بیمەی بێکاری (یەکەم جار)",
-        "Continuing Jobless Claims":        "داواکاری بیمەی بێکاری (بەردەوام)",
-        "ADP Nonfarm Employment":           "ژمارەی کارمەندی ADP",
-        "Employment Change":                "گۆڕانکاری کارمەندی",
-        "Labor Force Participation Rate":   "ڕێژەی بەشداری هێزی کار",
+    # ── helpers ──────────────────────────────────────────────────────────────
 
-        # ── بەرهەمی ناوخۆ و گەشەی ئابووری ──
-        "GDP":                              "بەرهەمی ناوخۆی گشتی (GDP)",
-        "Gross Domestic Product":           "بەرهەمی ناوخۆی گشتی (GDP)",
-        "GDP Growth Rate":                  "ڕێژەی گەشەی GDP",
-        "Retail Sales":                     "فرۆشتنی لقی",
-        "Core Retail Sales":                "فرۆشتنی لقی بێ ئۆتۆمبێل",
-        "Industrial Production":            "بەرهەمهێنانی پیشەسازی",
-        "Manufacturing PMI":                "پێوەری چالاکی پیشەسازی (PMI)",
-        "Services PMI":                     "پێوەری چالاکی خزمەتگوزاری (PMI)",
-        "Composite PMI":                    "پێوەری چالاکی گشتی (PMI)",
-        "PMI":                              "پێوەری چالاکی (PMI)",
-        "ISM Manufacturing PMI":            "پێوەری ISM بۆ پیشەسازی",
-        "ISM Services PMI":                 "پێوەری ISM بۆ خزمەتگوزاری",
-        "Trade Balance":                    "ترازووی بازرگانی",
-        "Current Account":                  "هەژماری کارەبایی",
-        "Consumer Confidence":              "باوەڕی بەکارهێنەر",
-        "Consumer Sentiment":               "هەستی بەکارهێنەر",
-        "Business Confidence":              "باوەڕی بازرگانی",
-        "Durable Goods Orders":             "داواکاری کاڵای مانەوەدار",
-        "Factory Orders":                   "داواکاری کارگە",
-        "Housing Starts":                   "دەستپێکردنی بینا",
-        "Building Permits":                 "مۆڵەتی بیناسازی",
-        "Existing Home Sales":              "فرۆشتنی خانووی کۆن",
-        "New Home Sales":                   "فرۆشتنی خانووی نوێ",
-
-        # ── بانکی ناوەندی و نرخی فایدە ──
-        "Interest Rate Decision":           "بڕیاری نرخی فایدە",
-        "Interest Rate":                    "نرخی فایدە",
-        "Fed Interest Rate Decision":       "بڕیاری نرخی فایدەی Fed",
-        "ECB Interest Rate Decision":       "بڕیاری نرخی فایدەی ECB",
-        "BoE Interest Rate Decision":       "بڕیاری نرخی فایدەی BoE",
-        "BoJ Interest Rate Decision":       "بڕیاری نرخی فایدەی BoJ",
-        "FOMC Statement":                   "بەیانامەی FOMC",
-        "FOMC Meeting Minutes":             "تومارەکانی کۆبوونەوەی FOMC",
-        "Fed Press Conference":             "کۆنفەرانسی رووداوی Fed",
-        "Monetary Policy Statement":        "بەیانامەی سیاسەتی پارەیی",
-        "Monetary Policy":                  "سیاسەتی پارەیی",
-        "Quantitative Easing":              "ئاسانکاری بڕی پارە (QE)",
-        "Balance Sheet":                    "ستاتی دارایی بانک",
-
-        # ── وتارەکانی سەرۆکانی بانک ──
-        "Fed Chair Powell Speaks":          "وتاری سەرۆکی Fed پاول",
-        "Powell Speaks":                    "وتاری پاول (Fed)",
-        "Lagarde Speaks":                   "وتاری لاگارد (ECB)",
-        "Bailey Speaks":                    "وتاری بایلی (BoE)",
-        "Ueda Speaks":                      "وتاری ئوێدا (BoJ)",
-
-        # ── وشە و دوانەی گشتی ──
-        "m/m":                              "(مانگانە)",
-        "y/y":                              "(ساڵانە)",
-        "q/q":                              "(چارەکانە)",
-        "Flash":                            "پێشەوەختی",
-        "Preliminary":                      "سەرەتایی",
-        "Final":                            "کۆتایی",
-        "Revised":                          "دەستکاریکراو",
-        "Actual":                           "ڕاستەقینە",
-        "Forecast":                         "پێشبینی",
-        "Previous":                         "پێشتر",
-    }
-
-    def _now_baghdad(self):
+    def _now(self) -> datetime:
         return datetime.now(self.BAGHDAD_TZ)
 
-    def _translate_title(self, title: str) -> str:
-        for en, ku in self.TITLE_TRANSLATE.items():
-            title = re.sub(re.escape(en), ku, title, flags=re.IGNORECASE)
-        return title
+    def _is_weekend(self, now: datetime) -> bool:
+        # weekday(): 0=Mon … 4=Fri, 5=Sat, 6=Sun
+        return now.weekday() in (5, 6)
 
-    def _extract_event_time(self, event_date: str) -> str:
-        if "T" not in event_date:
-            return ""
-        event_dt = datetime.fromisoformat(event_date.replace("Z", "+00:00"))
-        return event_dt.astimezone(self.BAGHDAD_TZ).strftime("%H:%M")
-
-    @staticmethod
-    def _strip_html(text: str) -> str:
-        return re.sub(r"<[^>]+>", "", text).strip()
-
-    async def fetch_calendar(self):
-        now = self._now_baghdad()
-
-        if now.weekday() in [5, 6]:
-            return []
-
-        high_events = []
-        medium_events = []
-
+    def _event_dt(self, event: dict) -> Optional[datetime]:
+        date_str = event.get("date", "")
+        if "T" not in date_str:
+            return None
         try:
-            url = "https://nfs.faireconomy.media/ff_calendar_thisweek.json"
+            dt = datetime.fromisoformat(date_str.replace("Z", "+00:00"))
+            return dt.astimezone(self.BAGHDAD_TZ)
+        except ValueError:
+            return None
 
+    def _event_id(self, event: dict) -> str:
+        return event.get("id", "") or event.get("title", "") + event.get("date", "")
+
+    # ── fetch ─────────────────────────────────────────────────────────────────
+
+    async def _fetch_today(self) -> list:
+        """Return today's High/Medium events from ForexFactory."""
+        now = self._now()
+        today = now.strftime("%Y-%m-%d")
+        try:
             async with aiohttp.ClientSession() as session:
-                async with session.get(url) as resp:
+                async with session.get(self.FF_URL, timeout=aiohttp.ClientTimeout(total=15)) as resp:
                     if resp.status != 200:
+                        logger.warning(f"ForexFactory returned {resp.status}")
                         return []
+                    data = await resp.json(content_type=None)
 
-                    data = await resp.json()
-                    today = now.strftime("%Y-%m-%d")
-
-                    for event in data:
-                        event_date = event.get("date", "")
-                        if today not in event_date:
-                            continue
-
-                        impact = event.get("impact", "")
-                        if impact not in ["High", "Medium"]:
-                            continue
-
-                        currency = event.get("currency", "")
-                        flag = self.CURRENCY_FLAGS.get(currency, "🌐")
-
-                        title = self._translate_title(event.get("title", ""))
-                        event_time = self._extract_event_time(event_date)
-
-                        line = f"{RTL}{flag} {event_time} › {title}"
-
-                        if impact == "High":
-                            high_events.append(line)
-                        else:
-                            medium_events.append(line)
+            results = []
+            for event in data:
+                event_date = event.get("date", "")
+                # ── گۆڕانکاری ٣: تەنها ئەمڕۆ ──
+                if today not in event_date:
+                    continue
+                if event.get("impact", "") not in ("High", "Medium"):
+                    continue
+                results.append(event)
+            return results
 
         except Exception as e:
-            logger.error(f"Calendar Error: {e}")
-
-        if not high_events and not medium_events:
+            logger.error(f"CalendarService fetch error: {e}")
             return []
 
-        lines = []
-        lines.append(f"{RTL}🗓 {now.strftime('%d/%m/%Y')}")
-        lines.append("━━━━━━━━━━━━━━━━━━━━━")
+    # ── format ───────────────────────────────────────────────────────────────
 
-        if high_events:
-            lines.append(f"{RTL}🔴 زۆر گرنگ")
-            lines.extend(high_events)
+    def _format_morning(self, events: list, now: datetime) -> str:
+        """Build the 09:00 morning calendar post — English, left-aligned."""
+        high_lines = []
+        medium_lines = []
 
-        if medium_events:
-            lines.append("")
-            lines.append(f"{RTL}🟡 مامناوەند")
-            lines.extend(medium_events)
+        for event in events:
+            dt = self._event_dt(event)
+            time_str = dt.strftime("%H:%M") if dt else "??:??"
+            flag = self.CURRENCY_FLAGS.get(event.get("currency", ""), "🌍")
+            title = event.get("title", "")
+            line = f"{flag} {time_str} › {title}"
 
-        lines.append("")
-        lines.append("━━━━━━━━━━━━━━━━━━━━━")
-        lines.append(f"{RTL}⚠️ کاتەکان بە کاتی هەولێر (UTC+3)")
-        lines.append(f"{RTL}🔔 @KurdTraderKRD")
+            if event.get("impact") == "High":
+                high_lines.append(line)
+            else:
+                medium_lines.append(line)
 
-        return lines
+        date_str = now.strftime("%d/%m/%Y")
+        parts = [f"📅 Economic Calendar — Today\n🗓 {date_str}"]
+
+        if high_lines:
+            parts.append("\n🔴 High Impact")
+            parts.extend(high_lines)
+
+        if medium_lines:
+            parts.append("\n🟡 Medium Impact")
+            parts.extend(medium_lines)
+
+        parts.append("\n⏰ Times are Erbil time (UTC+3)")
+        parts.append("📢 @KurdTraderKRD")
+
+        return "\n".join(parts)
+
+    def _format_alert(self, event: dict) -> str:
+        """30-minute warning before a High event."""
+        dt = self._event_dt(event)
+        time_str = dt.strftime("%H:%M") if dt else "??:??"
+        flag = self.CURRENCY_FLAGS.get(event.get("currency", ""), "🌍")
+        title = event.get("title", "")
+        forecast = event.get("forecast", "")
+        previous = event.get("previous", "")
+
+        lines = [
+            f"⏰ Upcoming in 30 min",
+            f"{flag} {time_str} › {title}",
+        ]
+        if forecast:
+            lines.append(f"📊 Forecast: {forecast}")
+        if previous:
+            lines.append(f"⏮ Previous: {previous}")
+        lines.append("📢 @KurdTraderKRD")
+        return "\n".join(lines)
+
+    def _format_result(self, event: dict) -> str:
+        """Actual result post after event time."""
+        dt = self._event_dt(event)
+        time_str = dt.strftime("%H:%M") if dt else "??:??"
+        flag = self.CURRENCY_FLAGS.get(event.get("currency", ""), "🌍")
+        title = event.get("title", "")
+        actual = event.get("actual", "")
+        forecast = event.get("forecast", "")
+        previous = event.get("previous", "")
+
+        # سەرنج: ئەگەر actual بەتال بوو، هێشتا دەرنەچووە
+        if not actual:
+            return ""
+
+        lines = [
+            f"📊 Data Released",
+            f"{flag} {time_str} › {title}",
+            f"✅ Actual:   {actual}",
+        ]
+        if forecast:
+            lines.append(f"📈 Forecast: {forecast}")
+        if previous:
+            lines.append(f"⏮ Previous: {previous}")
+        lines.append("📢 @KurdTraderKRD")
+        return "\n".join(lines)
+
+    # ── main loop tick ────────────────────────────────────────────────────────
+
+    async def tick(self):
+        """
+        Call this every 30 seconds from your main loop.
+        Handles:
+          1. 09:00 morning post (Mon–Fri only)
+          2. 30-min pre-alert for High events
+          3. Result post after event time (polls until actual appears)
+        """
+        now = self._now()
+
+        if self._is_weekend(now):
+            return
+
+        events = await self._fetch_today()
+
+        # ── ١. پۆستی بەیانی ٩:٠٠ ──
+        today_key = now.strftime("%Y-%m-%d")
+        if now.hour == 9 and now.minute < 5 and self._morning_posted != today_key:
+            if events:
+                msg = self._format_morning(events, now)
+                await self._send(msg)
+            self._morning_posted = today_key
+
+        # ── ٢ و ٣. هەواڵی High تەنها ──
+        high_events = [e for e in events if e.get("impact") == "High"]
+
+        for event in high_events:
+            dt = self._event_dt(event)
+            if dt is None:
+                continue
+
+            eid = self._event_id(event)
+            minutes_until = (dt - now).total_seconds() / 60
+
+            # ── ٢. ئاگادارکردنەوەی ٣٠ خولەک پێش ──
+            if 28 <= minutes_until <= 32 and eid not in self._alert_sent:
+                msg = self._format_alert(event)
+                await self._send(msg)
+                self._alert_sent.add(eid)
+
+            # ── ٣. ئەنجامەکە دوای دەرچوون (تا نیو کاتژمێر) ──
+            minutes_past = -minutes_until  # positive after event time
+            if 0 <= minutes_past <= 35 and eid not in self._result_sent:
+                result_msg = self._format_result(event)
+                if result_msg:
+                    await self._send(result_msg)
+                    self._result_sent.add(eid)
+
+    # ── helpers for app.py ───────────────────────────────────────────────────
+
+    async def fetch_calendar(self) -> list:
+        """Legacy method — returns formatted lines for the morning post."""
+        now = self._now()
+        if self._is_weekend(now):
+            return []
+        events = await self._fetch_today()
+        if not events:
+            return []
+        return self._format_morning(events, now).splitlines()
 
     def build_telegram_msg(self, events: list) -> str:
-        body = "\n".join(events)
-        return f"{RTL}📅 <b>ڕۆژمێری ئابووری ئەمڕۆ</b>\n\n{body}"
+        return "\n".join(events)
 
     def build_facebook_msg(self, events: list) -> str:
-        body = "\n".join(events)
-        return f"{RTL}📅 ڕۆژمێری ئابووری ئەمڕۆ\n\n{body}"
+        return "\n".join(events)
