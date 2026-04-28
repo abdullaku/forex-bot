@@ -117,7 +117,6 @@ class PricePoster:
         ch = self.config.CHANNEL_USERNAME
         p  = prices
         v  = self._prev
-        R  = "\u200f"  # Right-to-Left Mark
 
         def row(ticker, label, decimals=2):
             cur  = p[ticker]
@@ -125,34 +124,34 @@ class PricePoster:
             ar   = self._arrow(cur, prev)
             pct  = self._pct(cur, prev)
             val  = self._fmt(cur, decimals)
-            return f"{R}  {label}  {val}{ar} {pct}\n"
+            return f"  {label}  {val}{ar} {pct}\n"
 
         return (
-            f"{R}📊 {session['name_ku']} کرایەوە {session['emoji']}\n\n"
+            f"📊 {session['name_ku']} کرایەوە {session['emoji']}\n\n"
 
-            f"{R}🏅 Metals\n"
+            f"🏅 Metals\n"
             + row(self.GOLD_TICKER,   "🥇 Gold    (XAU)", 2)
             + row(self.SILVER_TICKER, "🥈 Silver  (XAG)", 3)
 
-            + f"\n{R}🛢️ Oil\n"
+            + f"\n🛢️ Oil\n"
             + row(self.BRENT_TICKER, "🛢 Brent  ", 2)
             + row(self.WTI_TICKER,   "🛢 WTI    ", 2)
 
-            + f"\n{R}💱 Forex\n"
+            + f"\n💱 Forex\n"
             + row(self.EURUSD_TICKER, "🇪🇺 EUR/USD", 4)
             + row(self.GBPUSD_TICKER, "🇬🇧 GBP/USD", 4)
             + row(self.USDJPY_TICKER, "🇯🇵 USD/JPY", 3)
             + row(self.DXY_TICKER,    "💵 DXY    ", 3)
 
-            + f"\n{R}📈 Stock Market\n"
+            + f"\n📈 Stock Market\n"
             + row(self.SP500_TICKER, "📊 S&P 500  ", 0)
             + row(self.DOW_TICKER,   "📉 Dow Jones", 0)
 
-            + f"\n{R}₿ Crypto\n"
+            + f"\n₿ Crypto\n"
             + row(self.BTC_TICKER, "₿ Bitcoin  ", 0)
 
-            + f"\n{R}🕐 {time_str}  |  {date_str}\n"
-            f"{R}🔔 {ch}"
+            + f"\n🕐 {time_str}  |  {date_str}\n"
+            f"🔔 {ch}"
         )
 
     def _active_opening_session(self, utc_now: datetime) -> dict | None:
