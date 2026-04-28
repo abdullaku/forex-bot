@@ -37,8 +37,10 @@ class ForexBotApp:
         self.price_poster = PricePoster(self.telegram, self.facebook)
         self.dinar_poster = DinarPoster(self.telegram, self.facebook)
         self.support_bot = SupportBot(token=self.config.SUPPORT_TOKEN)
-        self.calendar = CalendarService()
-        self._calendar_posted_today: str = ""
+        self.calendar = CalendarService(
+            send_callback=self.telegram.send_message,
+            fb_callback=self.facebook.post,        # ✅ Facebook زیادکرا
+        )
 
     def get_now(self) -> datetime:
         return datetime.now(self.config.BAGHDAD_TZ)
@@ -54,39 +56,13 @@ class ForexBotApp:
         await self.support_bot.start()
         logger.info("🚀 Bot Started - Official macro news only")
 
-    async def process_calendar(self, now: datetime) -> None:
-        today_key = now.strftime("%Y-%m-%d")
-
-        if self._calendar_posted_today == today_key:
-            return
-
-        try:
-            events = await self.calendar.fetch_calendar()
-
-            if not events:
-                logger.info("No calendar events today")
-                self._calendar_posted_today = today_key
-                return
-
-            tg_msg = self.calendar.build_telegram_msg(events)
-            fb_msg = self.calendar.build_facebook_msg(events)
-
+    async def _calendar_loop(self) -> None:
+        while True:
             try:
-                await self.telegram.send_message(tg_msg)
-                logger.info("✅ Calendar posted to Telegram")
+                await self.calendar.tick()
             except Exception as e:
-                logger.error(f"Calendar Telegram error: {e}")
-
-            try:
-                await self.facebook.post(fb_msg)
-                logger.info("✅ Calendar posted to Facebook")
-            except Exception as e:
-                logger.error(f"Calendar Facebook error: {e}")
-
-            self._calendar_posted_today = today_key
-
-        except Exception as e:
-            logger.error(f"Calendar error: {e}")
+                logger.error(f"Calendar tick error: {e}")
+            await asyncio.sleep(30)
 
     async def process_article(
         self,
@@ -220,12 +196,11 @@ class ForexBotApp:
 
         asyncio.create_task(self.price_poster.run())
         asyncio.create_task(self.dinar_poster.run())
+        asyncio.create_task(self._calendar_loop())
 
         while True:
             try:
                 now, current_time, current_date = self.get_time_strings()
-
-                await self.process_calendar(now)
 
                 await self.process_news(
                     current_time=current_time,
