@@ -25,12 +25,15 @@ class CalendarService:
         "CNY": "🇨🇳",
     }
 
-    def __init__(self, send_callback):
+    def __init__(self, send_callback, fb_callback=None):
         """
         send_callback: async function(message: str) -> None
-            Called by this service to send messages to Telegram/Facebook.
+            Called by this service to send messages to Telegram.
+        fb_callback: async function(message: str) -> None (optional)
+            Called by this service to send messages to Facebook.
         """
         self._send = send_callback
+        self._fb = fb_callback
         self._morning_posted: Optional[str] = None   # date string YYYY-MM-DD
         self._alert_sent: set = set()                # event_ids already alerted
         self._result_sent: set = set()               # event_ids already result-posted
@@ -57,6 +60,15 @@ class CalendarService:
     def _event_id(self, event: dict) -> str:
         return event.get("id", "") or event.get("title", "") + event.get("date", "")
 
+    async def _broadcast(self, msg: str) -> None:
+        """Send to Telegram (required) and Facebook (optional)."""
+        await self._send(msg)
+        if self._fb:
+            try:
+                await self._fb(msg)
+            except Exception as e:
+                logger.error(f"Calendar Facebook error: {e}")
+
     # ── fetch ─────────────────────────────────────────────────────────────────
 
     async def _fetch_today(self) -> list:
@@ -74,7 +86,6 @@ class CalendarService:
             results = []
             for event in data:
                 event_date = event.get("date", "")
-                # ── گۆڕانکاری ٣: تەنها ئەمڕۆ ──
                 if today not in event_date:
                     continue
                 if event.get("impact", "") not in ("High", "Medium"):
@@ -151,7 +162,6 @@ class CalendarService:
         forecast = event.get("forecast", "")
         previous = event.get("previous", "")
 
-        # سەرنج: ئەگەر actual بەتال بوو، هێشتا دەرنەچووە
         if not actual:
             return ""
 
@@ -189,7 +199,7 @@ class CalendarService:
         if now.hour == 9 and now.minute < 5 and self._morning_posted != today_key:
             if events:
                 msg = self._format_morning(events, now)
-                await self._send(msg)
+                await self._broadcast(msg)
             self._morning_posted = today_key
 
         # ── ٢ و ٣. هەواڵی High تەنها ──
@@ -206,15 +216,15 @@ class CalendarService:
             # ── ٢. ئاگادارکردنەوەی ٣٠ خولەک پێش ──
             if 28 <= minutes_until <= 32 and eid not in self._alert_sent:
                 msg = self._format_alert(event)
-                await self._send(msg)
+                await self._broadcast(msg)
                 self._alert_sent.add(eid)
 
             # ── ٣. ئەنجامەکە دوای دەرچوون (تا نیو کاتژمێر) ──
-            minutes_past = -minutes_until  # positive after event time
+            minutes_past = -minutes_until
             if 0 <= minutes_past <= 35 and eid not in self._result_sent:
                 result_msg = self._format_result(event)
                 if result_msg:
-                    await self._send(result_msg)
+                    await self._broadcast(result_msg)
                     self._result_sent.add(eid)
 
     # ── helpers for app.py ───────────────────────────────────────────────────
