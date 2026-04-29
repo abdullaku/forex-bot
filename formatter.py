@@ -40,7 +40,8 @@ class TextFormatter:
             if skip_rest:
                 continue
 
-            if "signal" in line.lower() or "سیگناڵ" in line:
+            lower_line = line.lower()
+            if "signal" in lower_line or "سیگناڵ" in line or "buy" in lower_line or "sell" in lower_line:
                 continue
 
             lines.append(raw_line)
@@ -51,6 +52,12 @@ class TextFormatter:
         text = re.sub(r"[ \t]{2,}", " ", text)
 
         return text.strip()
+
+    @staticmethod
+    def _link_label(source: str) -> str:
+        if (source or "").strip().lower() == "fxstreet":
+            return "🔗 سەرچاوەی هەواڵ"
+        return "🔗 سەرچاوەی فەرمی"
 
     @staticmethod
     def build_telegram_message(
@@ -65,11 +72,12 @@ class TextFormatter:
         safe_text = html.escape(clean)
         safe_source = html.escape(source)
         safe_url = html.escape(url, quote=True)
+        link_label = TextFormatter._link_label(source)
 
         return (
             f"{safe_text}\n\n"
             f"📌 {safe_source}\n"
-            f'<a href="{safe_url}">🔗 سەرچاوەی فەرمی</a>\n'
+            f'<a href="{safe_url}">{link_label}</a>\n'
             f"🕐 {current_time} | {current_date}"
         )
 
@@ -81,10 +89,11 @@ class TextFormatter:
         current_date: str,
     ) -> str:
         clean = TextFormatter.clean_text(text)
+        link_label = TextFormatter._link_label(source)
 
         return (
             f"{clean}\n\n"
             f"📌 {source}\n"
-            f"🔗 سەرچاوەی فەرمی\n"
+            f"{link_label}\n"
             f"🕐 {current_time} | {current_date}"
         )
