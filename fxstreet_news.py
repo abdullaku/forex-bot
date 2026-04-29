@@ -1,7 +1,6 @@
 import asyncio
 import json
 import logging
-import os
 import re
 from datetime import datetime, timezone, timedelta, time as dtime
 from email.utils import parsedate_to_datetime
@@ -24,10 +23,10 @@ class FXStreetNewsService:
     This is intentionally separate from official macro news.
 
     Rules:
-      - No posts during quiet hours, default 00:00-06:00 Baghdad time.
+      - No posts during quiet hours: 00:00-06:00 Baghdad time.
       - News is scored by relevance/strength.
       - Strong breaking news can be posted immediately outside quiet hours.
-      - Normal strong news is queued, then the strongest item is released every N minutes.
+      - Normal strong news is queued, then the strongest item is released every 30 minutes.
       - No hard daily post limit, so strong news is not missed.
       - Topic cooldown prevents repeated posts about the same pair/topic.
       - Images are kept when the RSS feed provides them.
@@ -153,22 +152,19 @@ class FXStreetNewsService:
     ]
 
     def __init__(self):
-        self.enabled = os.environ.get("FXSTREET_ENABLED", "false").strip().lower() == "true"
-        self.check_interval_minutes = int(os.environ.get("FXSTREET_CHECK_INTERVAL_MINUTES", "15"))
-        self.min_score = int(os.environ.get("FXSTREET_MIN_SCORE", "6"))
-        self.breaking_score = int(os.environ.get("FXSTREET_BREAKING_SCORE", "10"))
-        self.queue_release_minutes = int(os.environ.get("FXSTREET_QUEUE_RELEASE_MINUTES", "30"))
-        self.topic_cooldown_minutes = int(os.environ.get("FXSTREET_TOPIC_COOLDOWN_MINUTES", "120"))
-        self.quiet_start = self._parse_clock(os.environ.get("FXSTREET_QUIET_START", "00:00"))
-        self.quiet_end = self._parse_clock(os.environ.get("FXSTREET_QUIET_END", "06:00"))
-        self.send_images = os.environ.get("FXSTREET_SEND_IMAGES", "true").strip().lower() != "false"
-        self.state_path = Path(os.environ.get("FXSTREET_STATE_FILE", ".fxstreet_state.json"))
+        # Hardcoded settings. No Koyeb FXStreet variables are required.
+        self.enabled = True
+        self.check_interval_minutes = 15
+        self.min_score = 6
+        self.breaking_score = 10
+        self.queue_release_minutes = 30
+        self.topic_cooldown_minutes = 120
+        self.quiet_start = self._parse_clock("00:00")
+        self.quiet_end = self._parse_clock("06:00")
+        self.send_images = True
 
-        feeds_raw = os.environ.get("FXSTREET_FEEDS", "").strip()
-        if feeds_raw:
-            self.feeds = [x.strip() for x in feeds_raw.split(",") if x.strip()]
-        else:
-            self.feeds = self.DEFAULT_FEEDS[:]
+        self.state_path = Path(".fxstreet_state.json")
+        self.feeds = self.DEFAULT_FEEDS[:]
 
         self.headers = {
             "User-Agent": "Mozilla/5.0 (compatible; KurdTraderBot/1.0; +https://t.me/KurdTraderKRD)",
@@ -198,9 +194,11 @@ class FXStreetNewsService:
         try:
             if not self.state_path.exists():
                 return
+
             data = json.loads(self.state_path.read_text(encoding="utf-8"))
             self._seen_urls = set(data.get("seen_urls", []))
             self._topic_last_posted = dict(data.get("topic_last_posted", {}))
+
         except Exception as e:
             logger.warning("FXStreet state could not be loaded: %s", e)
 
@@ -211,7 +209,11 @@ class FXStreetNewsService:
                 "seen_urls": seen,
                 "topic_last_posted": self._topic_last_posted,
             }
-            self.state_path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+            self.state_path.write_text(
+                json.dumps(data, ensure_ascii=False, indent=2),
+                encoding="utf-8",
+            )
+
         except Exception as e:
             logger.warning("FXStreet state could not be saved: %s", e)
 
@@ -222,16 +224,19 @@ class FXStreetNewsService:
 
         if start <= end:
             return start <= t < end
+
         return t >= start or t < end
 
     def _fetch_due(self, now: datetime) -> bool:
         if self._last_fetch_at is None:
             return True
+
         return (now - self._last_fetch_at).total_seconds() >= self.check_interval_minutes * 60
 
     def _release_due(self, now: datetime) -> bool:
         if self._last_release_at is None:
             return True
+
         return (now - self._last_release_at).total_seconds() >= self.queue_release_minutes * 60
 
     def _clean_text(self, value: str) -> str:
@@ -262,6 +267,7 @@ class FXStreetNewsService:
     def _canonical_url(self, url: str) -> str:
         if not url:
             return ""
+
         parsed = urlparse(url.strip())
         return parsed._replace(query="", fragment="").geturl()
 
@@ -293,7 +299,19 @@ class FXStreetNewsService:
             if pair in lower:
                 return pair.upper()
 
-        for key in ("fed", "ecb", "boe", "boj", "cpi", "inflation", "nfp", "gold", "oil", "yields", "dxy"):
+        for key in (
+            "fed",
+            "ecb",
+            "boe",
+            "boj",
+            "cpi",
+            "inflation",
+            "nfp",
+            "gold",
+            "oil",
+            "yields",
+            "dxy",
+        ):
             if key in lower:
                 return key.upper()
 
@@ -401,6 +419,7 @@ class FXStreetNewsService:
         articles: list[dict] = []
         cached = self._feed_cache.get(feed_url, {})
         req_headers = {}
+
         if cached.get("etag"):
             req_headers["If-None-Match"] = cached["etag"]
         elif cached.get("last_modified"):
@@ -426,6 +445,7 @@ class FXStreetNewsService:
                 text = await resp.text()
 
             soup = BeautifulSoup(text, "xml")
+
             for item in soup.find_all("item"):
                 article = self._parse_rss_item(item)
                 if article:
@@ -444,13 +464,16 @@ class FXStreetNewsService:
             )
 
         articles: list[dict] = []
+
         for result in results:
             if isinstance(result, list):
                 articles.extend(result)
 
         output: list[dict] = []
+
         for article in articles:
             url = article.get("url", "")
+
             if not url or url in self._seen_urls:
                 continue
 
@@ -467,9 +490,11 @@ class FXStreetNewsService:
 
     def _add_to_queue(self, articles: list[dict]) -> None:
         existing = {item.get("url") for item in self._queue}
+
         for article in articles:
             if article.get("url") in existing:
                 continue
+
             self._queue.append(article)
 
         self._queue.sort(
@@ -491,6 +516,7 @@ class FXStreetNewsService:
 
         for article in self._queue:
             topic = article.get("topic_key", "FXSTREET")
+
             if self._topic_in_cooldown(topic, now):
                 remaining.append(article)
                 continue
@@ -511,36 +537,46 @@ class FXStreetNewsService:
 
         if self._fetch_due(now):
             self._last_fetch_at = now
+
             new_articles = await self._fetch_new_articles(now)
             if new_articles:
                 self._add_to_queue(new_articles)
                 logger.info("FXStreet queued %s strong market-news items", len(new_articles))
 
+        # Do not post during quiet hours.
+        # Fetching still happens, so strong news is not missed.
         if self._in_quiet_hours(now):
             return []
 
         ready: list[dict] = []
 
+        # Breaking/high-score items can be posted immediately outside quiet hours.
         for article in list(self._queue):
             topic = article.get("topic_key", "FXSTREET")
+
             if int(article.get("score", 0)) >= self.breaking_score and not self._topic_in_cooldown(topic, now):
                 self._queue.remove(article)
                 self._mark_topic_posted(topic, now)
                 ready.append(article)
+
                 logger.info(
                     "FXStreet breaking item selected: score=%s title=%s",
                     article.get("score"),
                     article.get("title", "")[:80],
                 )
+
                 return ready
 
+        # Normal strong items are released from queue every 30 minutes.
         if self._release_due(now):
             chosen = self._pick_best_from_queue(now)
             self._last_release_at = now
+
             if chosen:
                 topic = chosen.get("topic_key", "FXSTREET")
                 self._mark_topic_posted(topic, now)
                 ready.append(chosen)
+
                 logger.info(
                     "FXStreet item selected: score=%s title=%s",
                     chosen.get("score"),
