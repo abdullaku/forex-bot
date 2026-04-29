@@ -24,7 +24,7 @@ class SmartTranslator:
     """
     AI is used only for clean Kurdish rewriting and summarizing.
     It does NOT decide whether to skip the news.
-    Filtering must happen only at the source level in news.py.
+    Filtering must happen only at the source level.
 
     Final style:
       - Kurdish headline
@@ -68,25 +68,28 @@ class SmartTranslator:
     ) -> str:
         content = f"{title}\n{description}".strip()
 
+        is_fxstreet = (source or "").strip().lower() == "fxstreet"
+        source_type = "Forex market news / analysis" if is_fxstreet else "official macroeconomic news"
+        link_name = "market-news source" if is_fxstreet else "official source"
+
         return (
-            "You are a professional Kurdish editor for an official macroeconomic news Telegram channel.\n\n"
+            "You are a professional Kurdish editor for a Forex and macroeconomic Telegram channel.\n\n"
 
             "Important rule:\n"
             "- Do NOT decide whether this news should be skipped.\n"
-            "- The source has already been approved as an official macro source.\n"
-            "- Your job is only to rewrite the official news in clear Sorani Kurdish.\n\n"
+            f"- The source has already been approved as a {link_name}.\n"
+            "- Your job is only to rewrite the news in clear Sorani Kurdish.\n\n"
 
             "Source context:\n"
-            f"- Source: {source or 'Official source'}\n"
+            f"- Source: {source or 'News source'}\n"
+            f"- Source type: {source_type}\n"
             f"- Currency: {currency or 'Unknown'}\n\n"
 
             "Writing rules:\n"
             "- Write in natural Central Kurdish Sorani using Arabic script.\n"
-            "- Keep official names like Fed, BLS, BEA, ECB, Eurostat, BoE, ONS, BoJ, USD, EUR, GBP, JPY, CPI, GDP, PCE, NFP in English when useful.\n"
-            "- Keep all numbers, dates, percentages, institution names, and official facts accurate.\n"
+            "- Keep names like Fed, BLS, BEA, ECB, Eurostat, BoE, ONS, BoJ, FXStreet, USD, EUR, GBP, JPY, CPI, GDP, PCE, NFP, EUR/USD, GBP/USD, USD/JPY, Gold, Oil in English when useful.\n"
+            "- Keep all numbers, dates, percentages, institution names, currency pairs, and market facts accurate.\n"
             "- Do NOT invent actual, forecast, previous, market reaction, or extra facts if not provided.\n"
-            "- Do NOT explain Forex impact.\n"
-            "- Do NOT mention Forex unless the original official title itself directly mentions foreign exchange.\n"
             "- Do NOT create trading signals.\n"
             "- Do NOT say BUY or SELL.\n"
             "- Do NOT use clickbait.\n"
@@ -95,6 +98,12 @@ class SmartTranslator:
             "- Do NOT output markdown like ** or ##.\n"
             "- Source, link, and time will be added by the system later, so do not include them.\n\n"
 
+            "FXStreet-specific rule:\n"
+            "- If the source is FXStreet, summarize the market movement or reaction clearly.\n"
+            "- Do not present FXStreet as an official government or central-bank source.\n"
+            "- For FXStreet, phrases like 'FXStreet ڕاپۆرتی دا' or 'بەپێی ڕاپۆرتی FXStreet' are acceptable.\n"
+            "- Explain the movement in simple Kurdish, for example USD strength, EUR/USD pressure, Gold/Oil effect, yields, or central-bank comments.\n\n"
+
             "Output format exactly:\n"
             "Line 1: short clear Kurdish headline only, without emoji if not necessary\n"
             "Line 2: blank line\n"
@@ -102,19 +111,19 @@ class SmartTranslator:
 
             "Headline rules:\n"
             "- The headline must be clear and direct.\n"
-            "- The headline should mention the main event, institution, or number when useful.\n"
+            "- The headline should mention the main event, institution, currency pair, or number when useful.\n"
             "- The headline should be one line only.\n\n"
 
             "Summary rules:\n"
             "- The summary must explain only what happened.\n"
             "- Use 2 to 3 concise sentences.\n"
-            "- Mention the official source or institution when relevant.\n"
-            "- Preserve important numbers and names from the official text.\n"
+            "- Mention the source or institution when relevant.\n"
+            "- Preserve important numbers, currency pairs, and names from the original text.\n"
             "- Keep the full post body under 90 Kurdish words when possible.\n\n"
 
             "Return only the final Kurdish headline and summary.\n\n"
 
-            f"Official news:\n{content}"
+            f"News:\n{content}"
         )
 
     def _clean_line(self, line: str) -> str:
@@ -222,7 +231,7 @@ class SmartTranslator:
                 logger.warning(f"⚠️ Empty AI formatting result: {title[:60]}")
                 return None
 
-            logger.info(f"✅ Formatted official news: {title[:60]}")
+            logger.info(f"✅ Formatted news from {source or 'unknown'}: {title[:60]}")
             return cleaned
 
         except Exception as e:
