@@ -39,7 +39,7 @@ class ForexBotApp:
         self.support_bot = SupportBot(token=self.config.SUPPORT_TOKEN)
         self.calendar = CalendarService(
             send_callback=self.telegram.send_message,
-            fb_callback=self.facebook.post,        # ✅ Facebook زیادکرا
+            fb_callback=self.facebook.post,
         )
 
     def get_now(self) -> datetime:
@@ -54,7 +54,7 @@ class ForexBotApp:
     async def setup(self) -> None:
         await setup_db()
         await self.support_bot.start()
-        logger.info("🚀 Bot Started - Official macro news only")
+        logger.info("🚀 Bot Started - Official macro news + FXStreet market news")
 
     async def _calendar_loop(self) -> None:
         while True:
@@ -155,10 +155,10 @@ class ForexBotApp:
         articles = await self.scraper.fetch_all()
 
         if not articles:
-            logger.info("No official news found from sources")
+            logger.info("No news found from official sources or FXStreet")
             return
 
-        logger.info(f"Found {len(articles)} official news items")
+        logger.info(f"Found {len(articles)} news items")
 
         stats = {
             "posted": 0,
