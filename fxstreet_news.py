@@ -30,6 +30,7 @@ class FXStreetNewsService:
       - No hard daily post limit, so strong news is not missed.
       - Topic cooldown prevents repeated posts about the same pair/topic.
       - Images are kept when the RSS feed provides them.
+      - Queue is saved to state file so restart/redeploy does not lose strong queued news.
     """
 
     BAGHDAD_TZ = timezone(timedelta(hours=3))
@@ -198,6 +199,7 @@ class FXStreetNewsService:
             data = json.loads(self.state_path.read_text(encoding="utf-8"))
             self._seen_urls = set(data.get("seen_urls", []))
             self._topic_last_posted = dict(data.get("topic_last_posted", {}))
+            self._queue = list(data.get("queue", []))
 
         except Exception as e:
             logger.warning("FXStreet state could not be loaded: %s", e)
@@ -205,10 +207,14 @@ class FXStreetNewsService:
     def _save_state(self) -> None:
         try:
             seen = list(self._seen_urls)[-500:]
+            queue = self._queue[-30:]
+
             data = {
                 "seen_urls": seen,
                 "topic_last_posted": self._topic_last_posted,
+                "queue": queue,
             }
+
             self.state_path.write_text(
                 json.dumps(data, ensure_ascii=False, indent=2),
                 encoding="utf-8",
@@ -506,6 +512,7 @@ class FXStreetNewsService:
         )
 
         self._queue = self._queue[:30]
+        self._save_state()
 
     def _pick_best_from_queue(self, now: datetime) -> Optional[dict]:
         if not self._queue:
@@ -527,6 +534,7 @@ class FXStreetNewsService:
                 remaining.append(article)
 
         self._queue = remaining
+        self._save_state()
         return chosen
 
     async def fetch_all(self) -> list[dict]:
@@ -556,6 +564,8 @@ class FXStreetNewsService:
 
             if int(article.get("score", 0)) >= self.breaking_score and not self._topic_in_cooldown(topic, now):
                 self._queue.remove(article)
+                self._save_state()
+
                 self._mark_topic_posted(topic, now)
                 ready.append(article)
 
