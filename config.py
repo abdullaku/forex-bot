@@ -26,7 +26,7 @@ class Config:
     RESULT_POLL_WINDOW_MINUTES = int(os.environ.get("RESULT_POLL_WINDOW_MINUTES", "15"))
     CALENDAR_REFRESH_NORMAL_MINUTES = int(os.environ.get("CALENDAR_REFRESH_NORMAL_MINUTES", "360"))
 
-# FXStreet Forex Market News
+    # FXStreet Forex Market News
     FXSTREET_ENABLED = os.environ.get("FXSTREET_ENABLED", "false")
     FXSTREET_CHECK_INTERVAL_MINUTES = int(os.environ.get("FXSTREET_CHECK_INTERVAL_MINUTES", "15"))
     FXSTREET_MIN_SCORE = int(os.environ.get("FXSTREET_MIN_SCORE", "6"))
