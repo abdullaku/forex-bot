@@ -1,18 +1,26 @@
 from news import NewsScraper as NewsService
+from fxstreet_news import FXStreetNewsService
 
 
 class SourcesManager:
     """
-    Official news manager only.
+    News manager.
 
-    This manager fetches news only from news.py:
-    Fed, BLS, BEA, ECB, Eurostat, BoE, ONS, BoJ.
+    Sections:
+    1) Official macro news:
+       Fed, BLS, BEA, ECB, Eurostat, BoE, ONS, BoJ.
 
-    ForexFactory / economic_calendar is no longer used here.
+    2) Forex market news:
+       FXStreet, handled separately from official sources.
+
+    ForexFactory / economic_calendar is not used here.
     """
 
     def __init__(self):
         self.news_service = NewsService()
+        self.fxstreet_service = FXStreetNewsService()
 
     async def fetch_all(self):
-        return await self.news_service.fetch_all()
+        official_articles = await self.news_service.fetch_all()
+        fxstreet_articles = await self.fxstreet_service.fetch_all()
+        return official_articles + fxstreet_articles
