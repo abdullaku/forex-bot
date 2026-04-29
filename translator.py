@@ -22,9 +22,16 @@ TranslatorConfig.validate()
 
 class SmartTranslator:
     """
-    AI is used only for Kurdish formatting and market explanation.
+    AI is used only for clean Kurdish rewriting and summarizing.
     It does NOT decide whether to skip the news.
     Filtering must happen only at the source level in news.py.
+
+    Final style:
+      - Kurdish headline
+      - Short Kurdish summary
+      - No Forex importance section
+      - No warning/disclaimer section
+      - Source/link/time are added later by formatter.py
     """
 
     def __init__(self):
@@ -42,6 +49,16 @@ class SmartTranslator:
             r"[^0-9A-Za-z\u0600-\u06FF\s\.\,\:\%\$\€\£\(\)\-\/\'\"\؛\،\؟\!\+\•]"
         )
 
+        self.blocked_section_markers = (
+            "📰 هەواڵ:",
+            "هەواڵ:",
+            "📌 گرنگی بۆ Forex:",
+            "گرنگی بۆ Forex:",
+            "گرنگی بۆ فۆرێکس:",
+            "⚠️ تێبینی:",
+            "تێبینی:",
+        )
+
     def _create_translate_prompt(
         self,
         title: str,
@@ -52,12 +69,12 @@ class SmartTranslator:
         content = f"{title}\n{description}".strip()
 
         return (
-            "You are a professional Kurdish macro Forex news writer for a Telegram channel.\n\n"
+            "You are a professional Kurdish editor for an official macroeconomic news Telegram channel.\n\n"
 
             "Important rule:\n"
             "- Do NOT decide whether this news should be skipped.\n"
             "- The source has already been approved as an official macro source.\n"
-            "- Your job is only to rewrite, summarize, and format the news in Sorani Kurdish.\n\n"
+            "- Your job is only to rewrite the official news in clear Sorani Kurdish.\n\n"
 
             "Source context:\n"
             f"- Source: {source or 'Official source'}\n"
@@ -66,27 +83,36 @@ class SmartTranslator:
             "Writing rules:\n"
             "- Write in natural Central Kurdish Sorani using Arabic script.\n"
             "- Keep official names like Fed, BLS, BEA, ECB, Eurostat, BoE, ONS, BoJ, USD, EUR, GBP, JPY, CPI, GDP, PCE, NFP in English when useful.\n"
-            "- Keep all numbers, dates, percentages, and official facts accurate.\n"
-            "- Do NOT invent actual, forecast, previous, or market reaction if not provided.\n"
+            "- Keep all numbers, dates, percentages, institution names, and official facts accurate.\n"
+            "- Do NOT invent actual, forecast, previous, market reaction, or extra facts if not provided.\n"
+            "- Do NOT explain Forex impact.\n"
+            "- Do NOT mention Forex unless the original official title itself directly mentions foreign exchange.\n"
             "- Do NOT create trading signals.\n"
             "- Do NOT say BUY or SELL.\n"
             "- Do NOT use clickbait.\n"
-            "- Do NOT output explanations outside the final post.\n"
-            "- Do NOT use markdown like ** or ##.\n\n"
+            "- Do NOT output a warning, disclaimer, note, or advice.\n"
+            "- Do NOT use section labels such as '📰 هەواڵ:', '📌 گرنگی بۆ Forex:', or '⚠️ تێبینی:'.\n"
+            "- Do NOT output markdown like ** or ##.\n"
+            "- Source, link, and time will be added by the system later, so do not include them.\n\n"
 
             "Output format exactly:\n"
-            "Line 1: [emoji] short official headline in Kurdish\n"
+            "Line 1: short clear Kurdish headline only, without emoji if not necessary\n"
             "Line 2: blank line\n"
-            "Line 3: 📰 هەواڵ:\n"
-            "Line 4: one short paragraph explaining the official news\n"
-            "Line 5: blank line\n"
-            "Line 6: 📌 گرنگی بۆ Forex:\n"
-            "Line 7: explain briefly why this matters for the related currency and major Forex markets\n"
-            "Line 8: blank line\n"
-            "Line 9: ⚠️ تێبینی:\n"
-            "Line 10: ئەمە signal نییە؛ تەنها شیکاری هەواڵی ڕەسمییە.\n\n"
+            "Lines 3-5: short Kurdish summary in 2 to 3 sentences only\n\n"
 
-            "Return only the final formatted Kurdish post body.\n\n"
+            "Headline rules:\n"
+            "- The headline must be clear and direct.\n"
+            "- The headline should mention the main event, institution, or number when useful.\n"
+            "- The headline should be one line only.\n\n"
+
+            "Summary rules:\n"
+            "- The summary must explain only what happened.\n"
+            "- Use 2 to 3 concise sentences.\n"
+            "- Mention the official source or institution when relevant.\n"
+            "- Preserve important numbers and names from the official text.\n"
+            "- Keep the full post body under 90 Kurdish words when possible.\n\n"
+
+            "Return only the final Kurdish headline and summary.\n\n"
 
             f"Official news:\n{content}"
         )
@@ -97,10 +123,39 @@ class SmartTranslator:
         line = re.sub(r"[ \t]+", " ", line).strip()
         return line
 
+    def _remove_unwanted_sections(self, text: str) -> str:
+        """Hard guard in case the model ignores the prompt."""
+        if not text:
+            return ""
+
+        lines = text.replace("\r\n", "\n").replace("\r", "\n").split("\n")
+        kept = []
+        skip_mode = False
+
+        for raw in lines:
+            line = raw.strip()
+
+            if any(marker in line for marker in self.blocked_section_markers):
+                if "گرنگی" in line or "Forex" in line or "فۆرێکس" in line or "تێبینی" in line:
+                    skip_mode = True
+                continue
+
+            if skip_mode:
+                continue
+
+            lower_line = line.lower()
+            if "signal" in lower_line or "سیگناڵ" in line or "buy" in lower_line or "sell" in lower_line:
+                continue
+
+            kept.append(raw)
+
+        return "\n".join(kept).strip()
+
     def _clean_result(self, text: str) -> str:
         if not text:
             return ""
 
+        text = self._remove_unwanted_sections(text)
         text = text.replace("\r\n", "\n").replace("\r", "\n")
         raw_lines = text.split("\n")
 
@@ -121,12 +176,23 @@ class SmartTranslator:
 
             cleaned_lines.append(line)
 
-        return "\n".join(cleaned_lines).strip()
+        compact = []
+        for line in cleaned_lines:
+            if line == "" and compact and compact[-1] == "":
+                continue
+            compact.append(line)
+
+        # Keep the post compact: headline + one blank + up to three summary lines.
+        if len([x for x in compact if x]) > 4:
+            non_empty = [x for x in compact if x]
+            compact = [non_empty[0], ""] + non_empty[1:4]
+
+        return "\n".join(compact).strip()
 
     def _chat_sync(self, prompt: str) -> str:
         response = self.client.chat.completions.create(
             model=self.model,
-            temperature=0.35,
+            temperature=0.25,
             messages=[{"role": "user", "content": prompt}],
         )
         return response.choices[0].message.content.strip()
