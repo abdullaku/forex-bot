@@ -6,5 +6,3 @@ Flask
 requests
 groq
 pytz
-beautifulsoup4
-lxml
