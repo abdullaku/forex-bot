@@ -19,6 +19,7 @@ class CalendarService:
       - The bot can tick every 30 seconds, but it checks local cached events most of the time.
       - ForexFactory is called only for daily refresh and short result windows around releases.
       - Backoff is used when ForexFactory returns 429.
+      - Alerts are grouped by same currency + same time to avoid multiple posts.
     """
 
     BAGHDAD_TZ = timezone(timedelta(hours=3))
@@ -41,7 +42,6 @@ class CalendarService:
         self._send = send_callback
         self._fb = fb_callback
 
-        # ForexFactory only
         self.provider = "forexfactory"
 
         self.daily_fetch_time = self._parse_clock(os.environ.get("DAILY_CALENDAR_FETCH_TIME", "08:55"))
@@ -50,7 +50,6 @@ class CalendarService:
         self.result_poll_seconds = int(os.environ.get("RESULT_POLL_SECONDS", "60"))
         self.result_poll_window_minutes = int(os.environ.get("RESULT_POLL_WINDOW_MINUTES", "15"))
 
-        # Normal refresh cache. Default: 6 hours.
         self.normal_refresh_minutes = int(os.environ.get("CALENDAR_REFRESH_NORMAL_MINUTES", "360"))
 
         self.state_path = Path(os.environ.get("CALENDAR_STATE_FILE", ".calendar_state.json"))
@@ -150,6 +149,14 @@ class CalendarService:
         raw = event.get("id") or f"{event.get('currency', '')}|{event.get('title', '')}|{event.get('date', '')}"
         return f"{day}:{raw}"
 
+    def _group_key(self, event: dict, prefix: str) -> Optional[str]:
+        dt = self._event_dt(event)
+        if dt is None:
+            return None
+
+        currency = event.get("currency", "") or "GLOBAL"
+        return f"{dt.strftime('%Y-%m-%d')}:{prefix}:{currency}:{dt.strftime('%H:%M')}"
+
     def _flag_for_event(self, event: dict) -> str:
         currency = event.get("currency", "")
         return self.CURRENCY_FLAGS.get(currency, "🌍")
@@ -220,7 +227,6 @@ class CalendarService:
         if self._calendar_cache_at and not force:
             age = (now - self._calendar_cache_at).total_seconds()
 
-            # Use existing cache for 1 hour to avoid too many ForexFactory requests.
             if age < 60 * 60:
                 return self._filter_today(self._calendar_cache, now)
 
@@ -343,6 +349,88 @@ class CalendarService:
 
         return "\n".join(parts)
 
+    def _group_events_by_time_currency(self, events: list[dict]) -> dict[str, list[dict]]:
+        groups: dict[str, list[dict]] = {}
+
+        for event in events:
+            key = self._group_key(event, "alert")
+            if not key:
+                continue
+
+            groups.setdefault(key, []).append(event)
+
+        for key in groups:
+            groups[key] = sorted(groups[key], key=lambda e: e.get("title", ""))
+
+        return groups
+
+    def _group_title(self, events: list[dict]) -> str:
+        titles = " ".join(e.get("title", "") for e in events).lower()
+        currency = events[0].get("currency", "") if events else ""
+
+        if "boe" in titles or "bank rate" in titles or "mpc" in titles:
+            return "BoE Rate Decision"
+
+        if "ecb" in titles or "refinancing rate" in titles or "deposit facility" in titles:
+            return "ECB Rate Decision"
+
+        if "fomc" in titles or "federal funds" in titles or "fed" in titles:
+            return "Fed Rate Decision"
+
+        if "boj" in titles or "policy rate" in titles:
+            return "BoJ Policy Decision"
+
+        if "gdp" in titles:
+            return f"{currency} GDP Data" if currency else "GDP Data"
+
+        if "cpi" in titles or "pce" in titles or "inflation" in titles:
+            return f"{currency} Inflation Data" if currency else "Inflation Data"
+
+        if "employment" in titles or "unemployment" in titles or "payroll" in titles or "jobs" in titles:
+            return f"{currency} Jobs Data" if currency else "Jobs Data"
+
+        if len(events) > 1:
+            return f"{currency} High Impact Data" if currency else "High Impact Data"
+
+        return events[0].get("title", "High Impact Data") if events else "High Impact Data"
+
+    def _format_alert_group(self, events: list[dict]) -> str:
+        if not events:
+            return ""
+
+        first = events[0]
+        dt = self._event_dt(first)
+        time_str = dt.strftime("%H:%M") if dt else "??:??"
+        flag = self._flag_for_event(first)
+        currency = first.get("currency", "")
+        group_title = self._group_title(events)
+
+        lines = [
+            f"⏰ Upcoming in {self.pre_alert_minutes} min",
+            f"{flag} {currency} | {group_title}" if currency else f"{flag} {group_title}",
+            f"🕒 {time_str}",
+        ]
+
+        for event in events:
+            title = event.get("title", "")
+            forecast = event.get("forecast", "")
+            previous = event.get("previous", "")
+
+            lines.append(f"• {title}")
+
+            details = []
+            if forecast:
+                details.append(f"Forecast: {forecast}")
+            if previous:
+                details.append(f"Previous: {previous}")
+
+            if details:
+                lines.append("  " + " | ".join(details))
+
+        lines.append("📢 @KurdTraderKRD")
+
+        return "\n".join(lines)
+
     def _format_alert(self, event: dict) -> str:
         dt = self._event_dt(event)
         time_str = dt.strftime("%H:%M") if dt else "??:??"
@@ -447,7 +535,6 @@ class CalendarService:
 
         today_key = self._state_today(now)
 
-        # Daily fetch, usually 08:55.
         if self._should_do_daily_fetch(now):
             await self._refresh_calendar(force=True, reason="daily_fetch")
             self._daily_fetched = today_key
@@ -455,11 +542,9 @@ class CalendarService:
 
         events = await self._get_cached_today()
 
-        # If morning post time arrived but cache is empty, fetch immediately.
         if not events and self._should_do_morning_post(now):
             events = await self._refresh_calendar(force=True, reason="morning_post_empty_cache")
 
-        # Daily calendar post, usually 09:00.
         if self._should_do_morning_post(now):
             msg = self._format_morning(events, now)
             await self._broadcast(msg)
@@ -468,7 +553,6 @@ class CalendarService:
 
         high_events = [e for e in events if e.get("impact") == "High"]
 
-        # During release window, refresh only when needed.
         needs_result_refresh = any(
             self._event_is_in_result_window(e, now) and self._event_id(e) not in self._result_sent
             for e in high_events
@@ -479,6 +563,32 @@ class CalendarService:
             events = await self._refresh_calendar(force=True, reason="result_window")
             high_events = [e for e in events if e.get("impact") == "High"]
 
+        alert_window_start = self.pre_alert_minutes - 2
+        alert_window_end = self.pre_alert_minutes + 2
+
+        alert_candidates = []
+
+        for event in high_events:
+            dt = self._event_dt(event)
+            if dt is None:
+                continue
+
+            minutes_until = (dt - now).total_seconds() / 60
+
+            if alert_window_start <= minutes_until <= alert_window_end:
+                alert_candidates.append(event)
+
+        for group_key, group_events in self._group_events_by_time_currency(alert_candidates).items():
+            if group_key in self._alert_sent:
+                continue
+
+            msg = self._format_alert_group(group_events)
+
+            if msg:
+                await self._broadcast(msg)
+                self._alert_sent.add(group_key)
+                self._save_state()
+
         for event in high_events:
             dt = self._event_dt(event)
 
@@ -486,19 +596,7 @@ class CalendarService:
                 continue
 
             eid = self._event_id(event)
-            minutes_until = (dt - now).total_seconds() / 60
 
-            # Send pre-alert once, around 30 minutes before event.
-            alert_window_start = self.pre_alert_minutes - 2
-            alert_window_end = self.pre_alert_minutes + 2
-
-            if alert_window_start <= minutes_until <= alert_window_end and eid not in self._alert_sent:
-                msg = self._format_alert(event)
-                await self._broadcast(msg)
-                self._alert_sent.add(eid)
-                self._save_state()
-
-            # Send actual result once, during result window.
             if self._event_is_in_result_window(event, now) and eid not in self._result_sent:
                 result_msg = self._format_result(event)
 
@@ -508,10 +606,6 @@ class CalendarService:
                     self._save_state()
 
     async def fetch_calendar(self) -> list:
-        """
-        Legacy method kept for compatibility with old app code.
-        Returns the formatted daily calendar as lines.
-        """
         now = self._now()
 
         if self._is_weekend(now):
@@ -525,7 +619,4 @@ class CalendarService:
         return self._format_morning(events, now).splitlines()
 
     def build_telegram_msg(self, events: list) -> str:
-        """
-        Legacy method kept for compatibility with old app code.
-        """
         return "\n".join(events)
